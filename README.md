@@ -1,4 +1,4 @@
-# BPE Tokenization: Byte-Pair Encoding for Transformers
+# BPE Transformer: Byte-Pair Encoding for Transformers
 
 Implementation of the Byte-Pair Encoding tokenizer from scratch using some PyTorch basic functions. 
 
@@ -27,12 +27,12 @@ Download the TinyStories data:
 mkdir -p data
 cd data
 
-wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-train.txt
-wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
+curl -L -o TinyStoriesV2-GPT4-train.txt https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-train.txt
+curl -L -o TinyStoriesV2-GPT4-valid.txt https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
 
 cd ..
 ```
 
-### Demos
+## Demo Notebooks
 
 If you don't wish to run the Python scripts, but would like to see demonstrations on some of the implemented concepts, there are some iPython notebooks inside `notebooks`, which you can also try to run in your own personal computer.
