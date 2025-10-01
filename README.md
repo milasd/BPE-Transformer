@@ -1,6 +1,6 @@
 # BPE Tokenization: Byte-Pair Encoding for Transformers
 
-Implementation of the Byte-Pair Encoding tokenizer from scratch using some `pytorch script`. 
+Implementation of the Byte-Pair Encoding tokenizer from scratch using some PyTorch basic functions. 
 
 When the BPE implementation is finished, I will implement from scratch a simple Transformer (+ RoPE, AdamW optimizer etc).
 
