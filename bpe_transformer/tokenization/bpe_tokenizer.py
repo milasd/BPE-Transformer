@@ -92,8 +92,8 @@ class BPETokenizer(Tokenizer):
         # Invoke pre-tokenization of input file
         pretoken_counter = self._get_pretokenization(input_path=input_path, num_processes=num_processes)
 
-        # Initialize self._vocab_cache: 
-        # Counts frequency and adjacency pairs in pretoken_counter 
+        # Initialize self._vocab_cache:
+        # Counts frequency of adjacency pairs in pretoken_counter
         self._initialize_vocab_cache(pretoken_counter)
 
         # Merge pairs of bytes
@@ -101,7 +101,7 @@ class BPETokenizer(Tokenizer):
 
     def _initialize_vocab_cache(self, pretoken_counter: Counter) -> None:
         """
-        From the result of the pre-tokenization process, 
+        From the result of the pre-tokenization process,
         counts the frequency of all adjacent pairs of bytes in all pretokens,
         finally storing them as a max heap which orders the most frequent pairs.
         """
@@ -117,9 +117,7 @@ class BPETokenizer(Tokenizer):
 
         # Then build the heap from aggregated counts
         for pair, total_count in pair_counter.items():
-            heapq.heappush(self._vocab_cache, 
-                           MaxHeapItem(total_count, pair))
-      
+            heapq.heappush(self._vocab_cache, MaxHeapItem(total_count, pair))
 
     def _merge_tokens(self, pretoken_counter: Counter[bytes, int]) -> None:
         """
@@ -139,7 +137,7 @@ class BPETokenizer(Tokenizer):
 
         if not self._vocab_cache:
             raise AttributeError("Warning: self._vocab_cache was not initialized. No pairs to start merging process.")
-        
+
         while len(self.vocab) < self._vocab_size and len(self._vocab_cache) > 0:
             item = heapq.heappop(self._vocab_cache)
             pair = item.pair
@@ -179,7 +177,7 @@ class BPETokenizer(Tokenizer):
                 print(f"Added {pair} into new vocab token {new_id}")
 
                 # Register new vocab.
-                merged_bytes = (self._vocab[pair[0]] + self._vocab[pair[1]])
+                merged_bytes = self._vocab[pair[0]] + self._vocab[pair[1]]
                 self.add_new_vocab(id=new_id, new_value=merged_bytes)
                 new_id += 1
 
