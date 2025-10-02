@@ -89,7 +89,7 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def pretokenize_chunk(file_path: Path, start: int, end: int) -> Counter[tuple[bytes], int]:
+def pretokenize_chunk(file_path: Path, start: int, end: int) -> Counter[bytes, int]:
     """
     Apply pretokenization to a chunk with defined start and end positions in a file.
 
@@ -115,7 +115,7 @@ def pretokenize_chunk(file_path: Path, start: int, end: int) -> Counter[tuple[by
 
 def parallel_pretokenization(
     file_path: Path, num_processes: int = None, split_token: bytes = b"<|endoftext|>"
-) -> Counter[tuple[bytes], int]:
+) -> Counter[bytes, int]:
     """
     Pallelized pretokenization using multiprocessing.
     TODO: add support to multiple split tokens.
@@ -148,7 +148,7 @@ def parallel_pretokenization(
     return pretokens_counter
 
 
-def serial_pretokenization(file_path: Path, split_token: bytes = b"<|endoftext|>") -> Counter[tuple[bytes], int]:
+def serial_pretokenization(file_path: Path, split_token: bytes = b"<|endoftext|>") -> Counter[bytes, int]:
     """
     Original serial implementation for pre-tokenization in text chunks.
     TODO: add support to multiple split tokens.
@@ -182,7 +182,7 @@ def pretokenize(
     split_token: bytes = b"<|endoftext|>",
     parallel_processing: bool | None = True,
     n_workers: int | None = 4,
-) -> Counter[tuple[bytes], int]:
+) -> Counter[bytes, int]:
     """
     Apply pre-tokenization in text chunks.
     Processes data parallelly by default. If n. of workers is not provided, will use
