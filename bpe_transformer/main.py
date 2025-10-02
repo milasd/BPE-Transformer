@@ -1,10 +1,9 @@
-
-
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 from multiprocessing import cpu_count
 from pathlib import Path
 
 N_WORKERS = cpu_count()
+
 
 def train_bpe(
     input_path: Path, vocab_size: int, special_tokens: list[str]
