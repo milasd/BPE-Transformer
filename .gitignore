@@ -172,3 +172,6 @@ CHANGELOG.md
 *.sh
 
 tests/
+*copy.py
+*.txt
+debug_*.py

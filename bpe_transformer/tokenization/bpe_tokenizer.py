@@ -38,7 +38,7 @@ class BPETokenizer(Tokenizer):
 
         # We can keep track of the most frequent pairs with a max heap.
         self._vocab_cache: list[MaxHeapItem] = []
-        self._merges: set[tuple[bytes, bytes]] = set()
+        self._merges: list[tuple[bytes, bytes]] = list()
         self._special_tokens: set = set(special_tokens)
         self._vocab = self._build_initial_vocab()
         self._initial_vocab_size: int = len(self._vocab)  # 256 + len(special_tokens)
@@ -90,7 +90,9 @@ class BPETokenizer(Tokenizer):
         Train the BPE Tokenizer on an input file.
         """
         # Invoke pre-tokenization of input file
-        pretoken_counter = self._get_pretokenization(input_path=input_path, num_processes=num_processes)
+        pretoken_counter = self._get_pretokenization(
+            input_path=input_path, num_processes=num_processes
+        )
 
         # Initialize self._vocab_cache:
         # Counts frequency of adjacency pairs in pretoken_counter
@@ -133,7 +135,7 @@ class BPETokenizer(Tokenizer):
         # We will keep merging our vocab pairs
         # either until we reach the limit of the desired vocab size
         # or until there are no pairs left to merge.
-        print(f"N. of Pretokens to merge: {len(pretoken_counter)}")
+        # print(f"N. of Pretokens to merge: {len(pretoken_counter)}")
 
         if not self._vocab_cache:
             raise AttributeError("Warning: self._vocab_cache was not initialized. No pairs to start merging process.")
@@ -141,7 +143,7 @@ class BPETokenizer(Tokenizer):
         while len(self.vocab) < self._vocab_size and len(self._vocab_cache) > 0:
             item = heapq.heappop(self._vocab_cache)
             pair = item.pair
-            print(f"Current pair to look after: {pair})")
+            # print(f"Current pair to look after: {pair})")
             # pair = heapq.heappop(self._vocab_cache)
             merge_found = False
 
@@ -158,7 +160,7 @@ class BPETokenizer(Tokenizer):
                 if merge_result:
                     merged_token, merge_pos = merge_result
                     merge_found = True
-                    print(f"Replaced {pair} in : {s} -> {merged_token}")
+                    # print(f"Replaced {pair} in : {s} -> {merged_token}")
 
                     # Get the new adjacency pairs of merged token and frequency
                     new_pairs = self._get_adjacency_pairs(token=merged_token, positions=merge_pos)
@@ -173,8 +175,8 @@ class BPETokenizer(Tokenizer):
 
             # Only add to vocab (once) if we found at least one merge
             if merge_found:
-                self._merges.add((pair))
-                print(f"Added {pair} into new vocab token {new_id}")
+                self._merges.append((self._vocab[pair[0]], self._vocab[pair[1]]))
+                # print(f"Added {pair} into new vocab token {new_id}")
 
                 # Register new vocab.
                 merged_bytes = self._vocab[pair[0]] + self._vocab[pair[1]]
@@ -273,5 +275,7 @@ class BPETokenizer(Tokenizer):
         Return:
             Counter object with pre-token ocurrences in an input file.
         """
-        pretoken_counter = parallel_pretokenization(file_path=input_path, num_processes=num_processes)
+        pretoken_counter = parallel_pretokenization(
+            file_path=input_path, num_processes=num_processes, special_tokens=list(self._special_tokens)
+        )
         return pretoken_counter

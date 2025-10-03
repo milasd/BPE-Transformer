@@ -89,7 +89,7 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def pretokenize_chunk(file_path: Path, start: int, end: int) -> Counter[bytes, int]:
+def pretokenize_chunk(file_path: Path, start: int, end: int, special_tokens: list[str] = None) -> Counter[bytes, int]:
     """
     Apply pretokenization to a chunk with defined start and end positions in a file.
 
@@ -97,24 +97,42 @@ def pretokenize_chunk(file_path: Path, start: int, end: int) -> Counter[bytes, i
         file_path: Path of file to load the chunk
         start: Index of chunk start
         end: Index of chunk end
+        special_tokens: List of special tokens to keep intact
 
     Returns:
         Counter dict with (pretoken, n. of occurrences) in the chunk.
     """
+    if special_tokens is None:
+        special_tokens = []
+
     with open(file_path, "rb") as f:
         f.seek(start)
         chunk = f.read(end - start).decode(ENCODING_STD, errors="ignore")
         counter: Counter[tuple[bytes], int] = Counter()
-        # Find matching patterns for pretokens in chunk
-        for match in re.finditer(PAT, chunk):
-            # bytes tuple version of the pretoken
-            b = tuple(match.group().encode(ENCODING_STD))
-            counter[b] += 1
+
+        # Split on special tokens to prevent merging across document boundaries
+        if special_tokens:
+            # Create regex pattern to split on special tokens
+            escaped_specials = [re.escape(token) for token in special_tokens]
+            split_pattern = "|".join(escaped_specials)
+            text_parts = re.split(split_pattern, chunk)
+        else:
+            text_parts = [chunk]
+
+        # Pretokenize each part separately
+        for part in text_parts:
+            if not part:  # Skip empty parts
+                continue
+            # Find matching patterns for pretokens in each part using GPT-2 pattern
+            for match in re.finditer(PAT, part):
+                # bytes tuple version of the pretoken
+                b = tuple(match.group().encode(ENCODING_STD))
+                counter[b] += 1
         return counter
 
 
 def parallel_pretokenization(
-    file_path: Path, num_processes: int = None, split_token: bytes = b"<|endoftext|>"
+    file_path: Path, num_processes: int = None, split_token: bytes = b"<|endoftext|>", special_tokens: list[str] = None
 ) -> Counter[bytes, int]:
     """
     Pallelized pretokenization using multiprocessing.
@@ -124,6 +142,7 @@ def parallel_pretokenization(
         file_path: Path to the input file
         num_processes: Number of processes to use (defaults to CPU count)
         split_token: Token to use for chunk boundaries
+        special_tokens: List of special tokens to keep intact
 
     Returns:
         Counter object with combined token counts from all chunks
@@ -136,7 +155,7 @@ def parallel_pretokenization(
         boundaries = find_chunk_boundaries(f, num_processes, split_token)
 
     # Prepare arguments for parallel processes
-    chunk_args = [(file_path, start, end) for start, end in zip(boundaries[:-1], boundaries[1:])]
+    chunk_args = [(file_path, start, end, special_tokens) for start, end in zip(boundaries[:-1], boundaries[1:])]
 
     # Pretokenize chunks in parallel
     with Pool(processes=num_processes) as pool:
@@ -148,7 +167,9 @@ def parallel_pretokenization(
     return pretokens_counter
 
 
-def serial_pretokenization(file_path: Path, split_token: bytes = b"<|endoftext|>") -> Counter[bytes, int]:
+def serial_pretokenization(
+    file_path: Path, split_token: bytes = b"<|endoftext|>", special_tokens: list[str] = None
+) -> Counter[bytes, int]:
     """
     Original serial implementation for pre-tokenization in text chunks.
     TODO: add support to multiple split tokens.
@@ -157,10 +178,14 @@ def serial_pretokenization(file_path: Path, split_token: bytes = b"<|endoftext|>
         file_path: Path to the input file
         num_processes: Number of processes to use (defaults to CPU count)
         split_token: Token to use for chunk boundaries
+        special_tokens: List of special tokens to keep intact
 
     Returns:
         Counter object with combined token counts from all chunks
     """
+    if special_tokens is None:
+        special_tokens = []
+
     with open(file_path, "rb") as f:
         num_processes = 4
         boundaries = find_chunk_boundaries(f, num_processes, split_token)
@@ -170,9 +195,22 @@ def serial_pretokenization(file_path: Path, split_token: bytes = b"<|endoftext|>
             f.seek(start)
             chunk = f.read(end - start).decode(ENCODING_STD)
 
-            for match in re.finditer(PAT, chunk):
-                bytes_list = tuple(match.group().encode(ENCODING_STD))
-                pretokens_counter[bytes_list] += 1
+            # Split on special tokens to prevent merging across document boundaries
+            if special_tokens:
+                # Create regex pattern to split on special tokens
+                escaped_specials = [re.escape(token) for token in special_tokens]
+                split_pattern = "|".join(escaped_specials)
+                text_parts = re.split(split_pattern, chunk)
+            else:
+                text_parts = [chunk]
+
+            # Pretokenize each part separately
+            for part in text_parts:
+                if not part:  # Skip empty parts
+                    continue
+                for match in re.finditer(PAT, part):
+                    bytes_list = tuple(match.group().encode(ENCODING_STD))
+                    pretokens_counter[bytes_list] += 1
 
     return pretokens_counter
 
@@ -182,6 +220,7 @@ def pretokenize(
     split_token: bytes = b"<|endoftext|>",
     parallel_processing: bool | None = True,
     n_workers: int | None = 4,
+    special_tokens: list[str] = None,
 ) -> Counter[bytes, int]:
     """
     Apply pre-tokenization in text chunks.
@@ -194,12 +233,15 @@ def pretokenize(
         split_token: Token to use for chunk boundaries
         parallel_processing: If true, will parallelize the pretokenization processing.
         n_workers: Number of workers for parallel processing if it's selected; Default: 4
+        special_tokens: List of special tokens to keep intact
 
     Returns:
         Counter object with combined token counts from all chunks
     """
     return (
-        parallel_pretokenization(file_path=file_path, split_token=split_token, num_processes=n_workers)
+        parallel_pretokenization(
+            file_path=file_path, split_token=split_token, num_processes=n_workers, special_tokens=special_tokens
+        )
         if parallel_processing
-        else serial_pretokenization(file_path=file_path, split_token=split_token)
+        else serial_pretokenization(file_path=file_path, split_token=split_token, special_tokens=special_tokens)
     )
