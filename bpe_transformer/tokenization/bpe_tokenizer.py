@@ -37,7 +37,7 @@ class BPETokenizer(Tokenizer):
         self._vocab_size = vocab_size
 
         # We can keep track of the most frequent pairs with a max heap.
-        self._vocab_cache: list[MaxHeapItem] = []
+        self._vocab_pairs_heap: list[MaxHeapItem] = []
         self._merges: list[tuple[bytes, bytes]] = list()
         self._special_tokens: set = set(special_tokens)
         self._vocab = self._build_initial_vocab()
@@ -90,18 +90,16 @@ class BPETokenizer(Tokenizer):
         Train the BPE Tokenizer on an input file.
         """
         # Invoke pre-tokenization of input file
-        pretoken_counter = self._get_pretokenization(
-            input_path=input_path, num_processes=num_processes
-        )
+        pretoken_counter = self._get_pretokenization(input_path=input_path, num_processes=num_processes)
 
-        # Initialize self._vocab_cache:
+        # Initialize self._vocab_pairs_heap:
         # Counts frequency of adjacency pairs in pretoken_counter
-        self._initialize_vocab_cache(pretoken_counter)
+        self._initialize_pairs_cache(pretoken_counter)
 
         # Merge pairs of bytes
         self._merge_tokens(pretoken_counter)
 
-    def _initialize_vocab_cache(self, pretoken_counter: Counter) -> None:
+    def _initialize_pairs_cache(self, pretoken_counter: Counter) -> None:
         """
         From the result of the pre-tokenization process,
         counts the frequency of all adjacent pairs of bytes in all pretokens,
@@ -117,9 +115,12 @@ class BPETokenizer(Tokenizer):
                 pair = (pretoken[i], pretoken[i + 1])
                 pair_counter[pair] += count
 
+        # set self._vocab_pairs_counter
+        self._vocab_pairs_counter = pair_counter
+
         # Then build the heap from aggregated counts
         for pair, total_count in pair_counter.items():
-            heapq.heappush(self._vocab_cache, MaxHeapItem(total_count, pair))
+            heapq.heappush(self._vocab_pairs_heap, MaxHeapItem(total_count, pair))
 
     def _merge_tokens(self, pretoken_counter: Counter[bytes, int]) -> None:
         """
@@ -137,18 +138,27 @@ class BPETokenizer(Tokenizer):
         # or until there are no pairs left to merge.
         # print(f"N. of Pretokens to merge: {len(pretoken_counter)}")
 
-        if not self._vocab_cache:
-            raise AttributeError("Warning: self._vocab_cache was not initialized. No pairs to start merging process.")
+        if not self._vocab_pairs_heap:
+            raise AttributeError(
+                "Warning: self._vocab_pairs_heap was not initialized. No pairs to start merging process."
+            )
 
-        while len(self.vocab) < self._vocab_size and len(self._vocab_cache) > 0:
-            item = heapq.heappop(self._vocab_cache)
+        while len(self.vocab) < self._vocab_size and len(self._vocab_pairs_heap) > 0:
+            item = heapq.heappop(self._vocab_pairs_heap)
             pair = item.pair
+
+            # tracks the new pairs that were created and old pairs that decreased after the merge.
+            updated_pairs = set()
+
+            # Since we're not directly updating old pair counter in heap,
+            # just adding it back, then we need to verify if it's a not-updated entry.
+            if self._vocab_pairs_counter[pair] != item.count:
+                continue
             # print(f"Current pair to look after: {pair})")
-            # pair = heapq.heappop(self._vocab_cache)
+            # pair = heapq.heappop(self._vocab_pairs_heap)
             merge_found = False
 
             # counts the frequency of new merged pairs for this merge iteration.
-            current_merge_pairs = Counter()
 
             # Replace the pair in ALL strings in our sample
             for s in list(pretoken_counter.keys()):
@@ -167,10 +177,21 @@ class BPETokenizer(Tokenizer):
 
                     # Update current_merge_pairs
                     for p in new_pairs:
-                        current_merge_pairs[p[0]] += p[1] * pretoken_counter[s]
+                        self._vocab_pairs_counter[p[0]] += p[1] * pretoken_counter[s]
+                        updated_pairs.add(p[0])
 
-                    # Push back the merged token and delete the pre-merge token.
+                    # Now, we need to take care of the count of the adjacency pairs
+                    # of the pre-merged tokens.   Example: Merge (h,e) → [259, l, l, o]
+                    # we have to decrease the occurence of (e, l), because it's not in the token anymore.
+                    old_pairs = self._get_adjacency_pairs(token=s, positions=merge_pos)
+                    for p in old_pairs:
+                        # We have to decrease the count of the old pairs that were removed
+                        self._vocab_pairs_counter[p[0]] -= p[1] * pretoken_counter[s]
+                        updated_pairs.add(p[0])
+
+                    # Add the new merged token.
                     pretoken_counter[merged_token] += pretoken_counter[s]
+                    # Finally, delete the pre-merge token.
                     del pretoken_counter[s]
 
             # Only add to vocab (once) if we found at least one merge
@@ -183,10 +204,11 @@ class BPETokenizer(Tokenizer):
                 self.add_new_vocab(id=new_id, new_value=merged_bytes)
                 new_id += 1
 
-                # And the all new adjacency pairs observed in all strings after the merge to vocab_cache.
+                # Push all the new adjacency pairs and decreased adjacency pairs for pre-merge
                 [
-                    heapq.heappush(self._vocab_cache, MaxHeapItem(counter, new_pair))
-                    for new_pair, counter in current_merge_pairs.items()
+                    heapq.heappush(self._vocab_pairs_heap, MaxHeapItem(self._vocab_pairs_counter[p], p))
+                    for p in updated_pairs
+                    if self._vocab_pairs_counter[p] > 0
                 ]
 
     def _get_adjacency_pairs(self, token: list[int], positions: list[int]) -> Iterable:
