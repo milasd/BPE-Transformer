@@ -97,7 +97,7 @@ class BPETokenizer(Tokenizer):
 
     @property
     def encoding(self) -> str:
-        return self.encoding
+        return self._encoding
 
     def _build_initial_vocab(self) -> dict[int, bytes]:
         """

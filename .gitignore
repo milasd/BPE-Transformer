@@ -175,3 +175,4 @@ tests/
 *copy.py
 *.txt
 debug_*.py
+test_bpe.py
