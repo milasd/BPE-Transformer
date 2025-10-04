@@ -7,27 +7,27 @@ from bpe_transformer.tokenization.tokenizer import Tokenizer
 from bpe_transformer.tokenization.preprocessing import parallel_pretokenization
 
 
-class MaxHeapItem:
-    def __init__(self, count, pair):
-        self.count = count
-        self.pair = pair
-
-    def __lt__(self, other):
-        # Reverse the count comparison to have a max heap.
-        if self.count != other.count:
-            return self.count > other.count
-
-        # If counts are the same, larger lexicographical pair comes first.
-        return self.pair > other.pair
-
-    def __repr__(self):
-        return f"MaxHeapItem({self.count}, {self.pair})"
-
-
 class BPETokenizer(Tokenizer):
     """
     Implementation of a greedy Byte-Pair Encoding Tokenizer.
     """
+
+    class MaxHeapItem:
+        def __init__(self, count, pair, vocab):
+            self.count = count
+            self.pair = pair
+            # Store the byte representation for comparison
+            self.pair_bytes = (vocab[pair[0]], vocab[pair[1]])
+
+        def __lt__(self, other):
+            if self.count != other.count:
+                return self.count > other.count
+
+            # Lexicographically greater bytes comes first (max heap behavior)
+            return self.pair_bytes > other.pair_bytes
+
+        def __repr__(self):
+            return f"MaxHeapItem({self.count}, {self.pair})"
 
     def __init__(self, vocab_size: int, special_tokens: list[str]):
         if vocab_size < 256:
@@ -120,7 +120,7 @@ class BPETokenizer(Tokenizer):
 
         # Then build the heap from aggregated counts
         for pair, total_count in pair_counter.items():
-            heapq.heappush(self._vocab_pairs_heap, MaxHeapItem(total_count, pair))
+            heapq.heappush(self._vocab_pairs_heap, self.MaxHeapItem(total_count, pair, self._vocab))
 
     def _merge_tokens(self, pretoken_counter: Counter[bytes, int]) -> None:
         """
@@ -154,8 +154,7 @@ class BPETokenizer(Tokenizer):
             # just adding it back, then we need to verify if it's a not-updated entry.
             if self._vocab_pairs_counter[pair] != item.count:
                 continue
-            # print(f"Current pair to look after: {pair})")
-            # pair = heapq.heappop(self._vocab_pairs_heap)
+
             merge_found = False
 
             # counts the frequency of new merged pairs for this merge iteration.
@@ -168,7 +167,7 @@ class BPETokenizer(Tokenizer):
                 merge_result = self._merge_pair(pretoken=s, pair=pair, vocab_id=new_id)
 
                 if merge_result:
-                    merged_token, merge_pos = merge_result
+                    merged_token, merge_pos, pre_merge_pairs = merge_result
                     merge_found = True
                     # print(f"Replaced {pair} in : {s} -> {merged_token}")
 
@@ -183,8 +182,9 @@ class BPETokenizer(Tokenizer):
                     # Now, we need to take care of the count of the adjacency pairs
                     # of the pre-merged tokens.   Example: Merge (h,e) → [259, l, l, o]
                     # we have to decrease the occurence of (e, l), because it's not in the token anymore.
-                    old_pairs = self._get_adjacency_pairs(token=s, positions=merge_pos)
-                    for p in old_pairs:
+                    # The merge consumes TWO positions, so we need to account for neighbors of both
+
+                    for p in pre_merge_pairs:
                         # We have to decrease the count of the old pairs that were removed
                         self._vocab_pairs_counter[p[0]] -= p[1] * pretoken_counter[s]
                         updated_pairs.add(p[0])
@@ -206,7 +206,9 @@ class BPETokenizer(Tokenizer):
 
                 # Push all the new adjacency pairs and decreased adjacency pairs for pre-merge
                 [
-                    heapq.heappush(self._vocab_pairs_heap, MaxHeapItem(self._vocab_pairs_counter[p], p))
+                    heapq.heappush(
+                        self._vocab_pairs_heap, self.MaxHeapItem(self._vocab_pairs_counter[p], p, self._vocab)
+                    )
                     for p in updated_pairs
                     if self._vocab_pairs_counter[p] > 0
                 ]
@@ -264,6 +266,8 @@ class BPETokenizer(Tokenizer):
         merged_token = []
         # position(s) of the new vocab id in the merged string
         new_vocab_pos = []
+        # registers the pairs that will disappear after merging
+        pre_merge_pos = Counter()
         # find pair position in pretoken
         found_pair = False
         i = 1
@@ -278,6 +282,13 @@ class BPETokenizer(Tokenizer):
             found_pair = True
             merged_token.append(vocab_id)
             new_vocab_pos.append(len(merged_token) - 1)
+
+            # Registers pairs that will cease to exist
+            if (i - 2) >= 0:
+                pre_merge_pos[(pretoken[i - 2], pretoken[i - 1])] += 1
+            if (i + 1) < len(pretoken):
+                pre_merge_pos[(pretoken[i], pretoken[i + 1])] += 1
+
             # skip to next available unmerged element
             i += 2
 
@@ -285,7 +296,7 @@ class BPETokenizer(Tokenizer):
         if i == len(pretoken):
             merged_token.append(pretoken[-1])
 
-        return (tuple(merged_token), tuple(new_vocab_pos)) if found_pair else None
+        return (tuple(merged_token), tuple(new_vocab_pos), iter(pre_merge_pos.items())) if found_pair else None
 
     def _get_pretokenization(self, input_path: Path, num_processes: int | None) -> Counter:
         """
