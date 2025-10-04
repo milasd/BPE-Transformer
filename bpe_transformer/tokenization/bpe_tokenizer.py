@@ -9,10 +9,44 @@ from bpe_transformer.tokenization.preprocessing import parallel_pretokenization
 
 class BPETokenizer(Tokenizer):
     """
-    Implementation of a greedy Byte-Pair Encoding Tokenizer.
+    Implementation of a greedy Byte-Pair Encoding (BPE).
+
+    BPE is a data compression algorithm adapted for tokenization that iteratively merges
+    the most frequent pair of adjacent tokens. Starting with individual bytes (0-255),
+    it builds a vocabulary by repeatedly finding and merging the most common byte pairs
+    until reaching the desired vocabulary size.
+
+    Attributes:
+        _vocab (dict[int, bytes]): Maps token IDs to their byte representations
+        _merges (list[tuple[bytes, bytes]]): Ordered list of merged bytes operations performed
+        _vocab_size (int): Target vocabulary size
+        _special_tokens (set[str]): Special tokens to preserve during tokenization
+        _vocab_pairs_heap (list[MaxHeapItem]): Max-heap of (count, pair) for frequent pairs
+        _vocab_pairs_counter (Counter): True counts of all byte pairs
+
+    Usage Example:
+        >>> tokenizer = BPETokenizer(vocab_size=500, special_tokens=["<|endoftext|>"])
+        >>> tokenizer.train(input_path=Path("corpus.txt"), num_processes=4)
+        >>> # Tokenizer is now trained with 500 tokens (256 bytes + 244 merges)
     """
 
     class MaxHeapItem:
+        """
+        Wrapper class for heap items used in BPE training to track pair frequencies.
+
+        Python's heapq module implements a min-heap, but we need a max-heap to always
+        get the most frequent pair. This class reverses the comparison logic to achieve
+        max-heap behavior.
+
+        When counts are equal, vocab pairs are compared lexicographically by their byte
+        representation (larger ones first) for deterministic tie-breaking.
+
+        Args:
+            count: Frequency of this pair in the corpus
+            pair: Tuple of vocab IDs (int, int) representing the byte pair
+            vocab: Reference to the vocabulary to get byte representations for comparison
+        """
+
         def __init__(self, count, pair, vocab):
             self.count = count
             self.pair = pair
@@ -33,19 +67,20 @@ class BPETokenizer(Tokenizer):
         if vocab_size < 256:
             raise ValueError("Invalid Vocab size: must be at least 256")
 
-        self.encoding = "utf-8"
+        self._encoding = "utf-8"
         self._vocab_size = vocab_size
 
-        # We can keep track of the most frequent pairs with a max heap.
-        self._vocab_pairs_heap: list[MaxHeapItem] = []
         self._merges: list[tuple[bytes, bytes]] = list()
         self._special_tokens: set = set(special_tokens)
         self._vocab = self._build_initial_vocab()
         self._initial_vocab_size: int = len(self._vocab)  # 256 + len(special_tokens)
 
+        # Internal variables
+        # We can keep track of the most frequent pairs with a max heap.
+        self._vocab_pairs_heap: list[BPETokenizer.MaxHeapItem] = []
+
     @property
     def vocab(self) -> dict[int, bytes]:
-        """Return the vocabulary."""
         return self._vocab
 
     @property
@@ -59,6 +94,10 @@ class BPETokenizer(Tokenizer):
     @property
     def vocab_size(self) -> int:
         return self._vocab_size
+
+    @property
+    def encoding(self) -> str:
+        return self.encoding
 
     def _build_initial_vocab(self) -> dict[int, bytes]:
         """
@@ -88,16 +127,40 @@ class BPETokenizer(Tokenizer):
     def train(self, input_path: Path, num_processes: int | None) -> None:
         """
         Train the BPE Tokenizer on an input file.
+        Given the input file, we start from our base vocab (256 + special tokens),
+        and keep "merging" the most frequent pairs of vocab tokens
+        until we either reach our vocab size.
+
+        Args:
+            input_path: Path to the input file to be used for training.
+
+        The training process can be summarised as:
+            1. Initialize vocabulary with 256 base bytes (0-255) and special tokens.
+            2. Count all adjacent byte pairs in the training corpus
+            3. Merge the most frequent pair into a new token;
+               If there are "ties" in frequency, the lexicographical shall be chosen
+            4. Update pair frequencies and repeat
+               until either the vocab_size is reached
+               or the number of adjacent pairs to merge is empty.
+
+        Implementation:
+            - Uses a max-heap with lazy deletion to easily pop the most frequent
+            - Pair counts are maintained in self._vocab_pairs_counter for O(1) lookups
+            - Outdated heap entries (with outdated counts) are skipped during processing
+            - Lexicographic tie-breaking
         """
         # Invoke pre-tokenization of input file
         pretoken_counter = self._get_pretokenization(input_path=input_path, num_processes=num_processes)
 
-        # Initialize self._vocab_pairs_heap:
+        # Initialize self._vocab_pairs_heap and self._vocab_pairs_counter:
         # Counts frequency of adjacency pairs in pretoken_counter
         self._initialize_pairs_cache(pretoken_counter)
 
         # Merge pairs of bytes
         self._merge_tokens(pretoken_counter)
+
+        # Clean up training artifacts
+        self._clear_training_cache()
 
     def _initialize_pairs_cache(self, pretoken_counter: Counter) -> None:
         """
@@ -147,29 +210,22 @@ class BPETokenizer(Tokenizer):
             item = heapq.heappop(self._vocab_pairs_heap)
             pair = item.pair
 
-            # tracks the new pairs that were created and old pairs that decreased after the merge.
-            updated_pairs = set()
-
             # Since we're not directly updating old pair counter in heap,
             # just adding it back, then we need to verify if it's a not-updated entry.
             if self._vocab_pairs_counter[pair] != item.count:
                 continue
 
-            merge_found = False
+            # tracks the new pairs that were created and old pairs that decreased after the merge.
+            updated_pairs = set()
 
-            # counts the frequency of new merged pairs for this merge iteration.
-
-            # Replace the pair in ALL strings in our sample
+            # Search for the pair in ALL pre-tokens from our training data.
             for s in list(pretoken_counter.keys()):
                 if len(s) < 2:
                     continue
-                # print(f"Current string: {s}")
                 merge_result = self._merge_pair(pretoken=s, pair=pair, vocab_id=new_id)
 
                 if merge_result:
                     merged_token, merge_pos, pre_merge_pairs = merge_result
-                    merge_found = True
-                    # print(f"Replaced {pair} in : {s} -> {merged_token}")
 
                     # Get the new adjacency pairs of merged token and frequency
                     new_pairs = self._get_adjacency_pairs(token=merged_token, positions=merge_pos)
@@ -183,7 +239,6 @@ class BPETokenizer(Tokenizer):
                     # of the pre-merged tokens.   Example: Merge (h,e) → [259, l, l, o]
                     # we have to decrease the occurence of (e, l), because it's not in the token anymore.
                     # The merge consumes TWO positions, so we need to account for neighbors of both
-
                     for p in pre_merge_pairs:
                         # We have to decrease the count of the old pairs that were removed
                         self._vocab_pairs_counter[p[0]] -= p[1] * pretoken_counter[s]
@@ -195,16 +250,16 @@ class BPETokenizer(Tokenizer):
                     del pretoken_counter[s]
 
             # Only add to vocab (once) if we found at least one merge
-            if merge_found:
+            if updated_pairs:
                 self._merges.append((self._vocab[pair[0]], self._vocab[pair[1]]))
-                # print(f"Added {pair} into new vocab token {new_id}")
 
                 # Register new vocab.
                 merged_bytes = self._vocab[pair[0]] + self._vocab[pair[1]]
                 self.add_new_vocab(id=new_id, new_value=merged_bytes)
                 new_id += 1
 
-                # Push all the new adjacency pairs and decreased adjacency pairs for pre-merge
+                # Push to heap: all the new adjacency pairs
+                # and the updated count for adjacency pairs removed after merge.
                 [
                     heapq.heappush(
                         self._vocab_pairs_heap, self.MaxHeapItem(self._vocab_pairs_counter[p], p, self._vocab)
@@ -212,6 +267,65 @@ class BPETokenizer(Tokenizer):
                     for p in updated_pairs
                     if self._vocab_pairs_counter[p] > 0
                 ]
+
+    def _merge_pair(self, pretoken: list[int], pair: tuple[int], vocab_id: int) -> tuple[tuple[int], tuple[int]] | None:
+        """
+        Given a list of vocab indexes of a word
+        (which contains 0-255 only if no merges happened yet),
+        replace a desired pair with the new index of the vocab.
+
+        Eg.:
+        pretoken = [2, 16, 45, 33, 1, 16, 45], pair = (16, 45), vocab_id = 334
+        -> return [2, 334, 33, 1, 334], [(2, 334), (1, 334)], 2
+
+        Args:
+            pretoken: A pre-token consisting of a list of ids in the vocab
+            pair: Tuple of ints of the pair we want to replace with a single vocab_id
+            vocab_id: the vocab_id to replace the pair.
+        Return:
+            If no merges were made, return None.
+            Else, return:   updated pretoken after substitutions,
+                            an iterable containing the position(indexes) of the new merged vocab,
+                            an iterable containing the pairs that will cease to "exist" after the merge.
+        """
+        if len(pretoken) < 2:
+            raise ValueError("Merge pair call invalid: pre-token len. < 2")
+
+        merged_token = []
+        # position(s) of the new vocab id in the merged string
+        new_vocab_pos = []
+        # registers the pairs that will disappear after merging
+        pre_merge_pos = Counter()
+        # find pair position in pretoken
+        found_pair = False
+        i = 1
+        while i < len(pretoken):
+            if (pretoken[i - 1], pretoken[i]) != pair:
+                # we don't add pretoken[i]
+                # because it might be the start of a matching pair later.
+                merged_token.append(pretoken[i - 1])
+                i += 1
+                continue
+
+            # Register new merged token position
+            found_pair = True
+            merged_token.append(vocab_id)
+            new_vocab_pos.append(len(merged_token) - 1)
+
+            # Registers pairs that will cease to exist
+            if (i - 2) >= 0:
+                pre_merge_pos[(pretoken[i - 2], pretoken[i - 1])] += 1
+            if (i + 1) < len(pretoken):
+                pre_merge_pos[(pretoken[i], pretoken[i + 1])] += 1
+
+            # skip to next available unmerged element
+            i += 2
+
+        # Add the last element if we didn't end with a merge
+        if i == len(pretoken):
+            merged_token.append(pretoken[-1])
+
+        return (tuple(merged_token), iter(new_vocab_pos), iter(pre_merge_pos.items())) if found_pair else None
 
     def _get_adjacency_pairs(self, token: list[int], positions: list[int]) -> Iterable:
         """
@@ -240,63 +354,16 @@ class BPETokenizer(Tokenizer):
 
         return iter(adjacent_pairs.items())
 
-    # todo: rewrite __lr__ for max heap and remove * (-1) for counter.
-    def _merge_pair(self, pretoken: list[int], pair: tuple[int], vocab_id: int) -> tuple[tuple[int], tuple[int]] | None:
+    def _clear_training_cache(self) -> None:
         """
-        Given a list of vocab indexes of a word
-        (which contains 0-255 only if no merges happened yet),
-        replace a desired pair with the new index of the vocab.
+        Clear internal data structures used during training.
 
-        Eg.:
-        pretoken = [2, 16, 45, 33, 1, 16, 45], pair = (16, 45), vocab_id = 334
-        -> return [2, 334, 33, 1, 334], [(2, 334), (1, 334)], 2
-
-        Args:
-            pretoken: A pre-token consisting of a list of ids in the vocab
-            pair: Tuple of ints of the pair we want to replace with a single vocab_id
-            vocab_id: the vocab_id to replace the pair.
-        Return:
-            If no merges were made, return None.
-            Else, return:   updated pretoken after substitutions,
-                            and an iterable containing the position(indexes) of the new merged int.
+        After training completes, the heap and pair counter are no longer needed
+        and can be cleared to free memory. Only the vocabulary and merge rules
+        are retained for tokenization.
         """
-        if len(pretoken) < 2:
-            raise ValueError("Merge pair call invalid: pre-token len. < 2")
-
-        merged_token = []
-        # position(s) of the new vocab id in the merged string
-        new_vocab_pos = []
-        # registers the pairs that will disappear after merging
-        pre_merge_pos = Counter()
-        # find pair position in pretoken
-        found_pair = False
-        i = 1
-        while i < len(pretoken):
-            if (pretoken[i - 1], pretoken[i]) != pair:
-                # we don't add pretoken[i]
-                # because it might be the start of a matching pair later.
-                merged_token.append(pretoken[i - 1])
-                i += 1
-                continue
-
-            found_pair = True
-            merged_token.append(vocab_id)
-            new_vocab_pos.append(len(merged_token) - 1)
-
-            # Registers pairs that will cease to exist
-            if (i - 2) >= 0:
-                pre_merge_pos[(pretoken[i - 2], pretoken[i - 1])] += 1
-            if (i + 1) < len(pretoken):
-                pre_merge_pos[(pretoken[i], pretoken[i + 1])] += 1
-
-            # skip to next available unmerged element
-            i += 2
-
-        # Add the last element if we didn't end with a merge
-        if i == len(pretoken):
-            merged_token.append(pretoken[-1])
-
-        return (tuple(merged_token), tuple(new_vocab_pos), iter(pre_merge_pos.items())) if found_pair else None
+        self._vocab_pairs_counter = Counter()
+        self._vocab_pairs_heap = []
 
     def _get_pretokenization(self, input_path: Path, num_processes: int | None) -> Counter:
         """
