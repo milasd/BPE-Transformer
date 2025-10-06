@@ -28,7 +28,7 @@ class BPETokenizer(Tokenizer):
 
     @property
     def _bytes_to_id(self) -> dict[bytes, int]:
-        """Cached reverse vocabulary mapping for faster lookups."""
+        """Cached reverse vocab mapping (bytes to int) for faster lookups."""
         if self._bytes_to_id_cache is None:
             self._bytes_to_id_cache = {v: k for k, v in self._vocab.items()}
         return self._bytes_to_id_cache
