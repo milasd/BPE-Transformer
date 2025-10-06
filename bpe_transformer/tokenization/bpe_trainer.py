@@ -106,6 +106,9 @@ class BPETrainer:
         """
         # First, aggregate all pair counts
         pair_counter = Counter()
+        # Track which pretokens contain which pairs for faster merging
+        self._pair_to_pretokens = {}
+
         for pretoken, count in pretoken_counter.items():
             if len(pretoken) == 1:
                 continue
@@ -114,15 +117,17 @@ class BPETrainer:
                 pair = (pretoken[i], pretoken[i + 1])
                 pair_counter[pair] += count
 
+                # Track pretoken membership
+                if pair not in self._pair_to_pretokens:
+                    self._pair_to_pretokens[pair] = set()
+                self._pair_to_pretokens[pair].add(pretoken)
+
         # set self._vocab_pairs_counter
         self._vocab_pairs_counter = pair_counter
 
-        # # Then build the heap from aggregated counts
-        # for pair, total_count in pair_counter.items():
-        #     heapq.heappush(self._vocab_pairs_heap, self.MaxHeapItem(total_count, pair, self._vocab))
+        # Build heap to easily pop the max counter
         self._vocab_pairs_heap = [
-            self.MaxHeapItem(total_count, pair, self._vocab)
-            for pair, total_count in pair_counter.items()
+            self.MaxHeapItem(total_count, pair, self._vocab) for pair, total_count in pair_counter.items()
         ]
         heapq.heapify(self._vocab_pairs_heap)
 
@@ -161,12 +166,14 @@ class BPETrainer:
 
             merge_found = False
 
-            # counts the frequency of new merged pairs for this merge iteration.
+            # Only process pretokens that contain this pair (optimization)
+            pretokens_with_pair = self._pair_to_pretokens.get(pair, set()).copy()
 
-            # Replace the pair in ALL strings in our sample
-            for s in list(pretoken_counter.keys()):
-                if len(s) < 2:
+            for s in pretokens_with_pair:
+                if s not in pretoken_counter:
+                    # Pretoken was already merged in a previous iteration
                     continue
+
                 # print(f"Current string: {s}")
                 merge_result = self._merge_pair(pretoken=s, pair=pair, vocab_id=new_id)
 
@@ -192,6 +199,19 @@ class BPETrainer:
                         # We have to decrease the count of the old pairs that were removed
                         self._vocab_pairs_counter[p[0]] -= p[1] * pretoken_counter[s]
                         updated_pairs.add(p[0])
+
+                    # Remove old pretoken from pair-to-pretokens mapping
+                    for i in range(len(s) - 1):
+                        old_pair = (s[i], s[i + 1])
+                        if old_pair in self._pair_to_pretokens:
+                            self._pair_to_pretokens[old_pair].discard(s)
+
+                    # Add new pretoken to pair-to-pretokens mapping
+                    for i in range(len(merged_token) - 1):
+                        new_pair = (merged_token[i], merged_token[i + 1])
+                        if new_pair not in self._pair_to_pretokens:
+                            self._pair_to_pretokens[new_pair] = set()
+                        self._pair_to_pretokens[new_pair].add(merged_token)
 
                     # Add the new merged token.
                     pretoken_counter[merged_token] += pretoken_counter[s]
