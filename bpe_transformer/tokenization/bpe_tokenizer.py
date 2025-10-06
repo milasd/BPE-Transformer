@@ -37,6 +37,18 @@ class BPETokenizer(Tokenizer):
     def from_files(
         cls, vocab_filepath: Path, merges_filepath: Path, special_tokens: list[str] | None = None
     ) -> "BPETokenizer":
+        """
+        Creates an instance of BPETokenizer based on files for vocab and merges, 
+        and the list of special tokens to consider. 
+        Will add special tokens to vocab if they're not in the provided vocab file.
+
+        Args:
+            Path to file containing vocab
+            Path to file containing merges
+            List of special tokens str
+        Returns:
+            BPETokenizer with loaded vocab, merges and special tokens
+        """
         return cls(
             vocab=cls.load_vocab(file_path=vocab_filepath, special_tokens=special_tokens),
             merges=cls.load_merges(merges_filepath),
@@ -61,6 +73,28 @@ class BPETokenizer(Tokenizer):
         return decoded_text.decode(ENCODING_STD, errors="replace")
 
     def encode(self, text: str) -> list[int]:
+        """
+        Encodes a text string based on the class vocab and merges list.
+
+        First, the text is pretokenized, considering any special characters.
+        The pretokens are mapped to the corresponding vocab ids.
+        
+        Then, the function will start to try merging the pretoken ids, 
+        associating the merged bytes to its vocab id.
+        The merging process is greedy, that is,
+        the encoding will find the first merge inside the merges list
+        that is applicable to the pretoken.
+        This is repeated to every pretoken, except special tokens,
+        which are directly mapped to the vocab id.
+
+        The final token (after every possible merge) ids will be appended 
+        to the encoded text, which is a list of every token id.
+
+        Args:
+            text string
+        Returns:
+            Encoded test, which is a list of int ids from the vocab.
+        """
         encoded_text: list[int] = []
 
         # 1. pretokenize text.
@@ -88,6 +122,9 @@ class BPETokenizer(Tokenizer):
             encoded_text.extend(encoded_text_part)
 
         return encoded_text
+    
+    def encode_parallel(self, text: str, chunk_size: int = 10000, n_workers: int = 4) -> list[int]:
+        pass
 
     def _initialize_pretoken_vocab(self, pretoken: bytes) -> list[int]:
         """
