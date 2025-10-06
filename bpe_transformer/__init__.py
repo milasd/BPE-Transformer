@@ -1,6 +1,6 @@
 import importlib.metadata
+from .main import train_bpe
 
 __version__ = importlib.metadata.version("bpe_transformer")
 
-# Import modules to enable convenient access
-from bpe_transformer import tokenization
+__all__ = ["train_bpe"]
