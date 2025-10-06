@@ -172,7 +172,7 @@ CHANGELOG.md
 *.sh
 
 *copy.py
-*.txt
+# *.txt
 debug_*.py
 test_bpe.py
 
