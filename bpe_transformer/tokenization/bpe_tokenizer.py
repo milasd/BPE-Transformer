@@ -30,7 +30,7 @@ class BPETokenizer(Tokenizer):
     def _bytes_to_id(self) -> dict[bytes, int]:
         """Cached reverse vocabulary mapping for faster lookups."""
         if self._bytes_to_id_cache is None:
-            self._bytes_to_id_cache = {v: k for k, v in self.vocab.items()}
+            self._bytes_to_id_cache = {v: k for k, v in self._vocab.items()}
         return self._bytes_to_id_cache
 
     @classmethod
@@ -56,7 +56,7 @@ class BPETokenizer(Tokenizer):
         decoded_text = b""
         replacement_bytes = b"\xef\xbf\xbd"
         for id in ids:
-            decoded_text += self.vocab.get(id, replacement_bytes)
+            decoded_text += self._vocab.get(id, replacement_bytes)
 
         return decoded_text.decode(ENCODING_STD, errors="replace")
 
@@ -148,9 +148,9 @@ class BPETokenizer(Tokenizer):
         # search for the first possible merge inside merges
         for merge in self.merges:
             for i in range(1, len(pretoken)):
-                if self.vocab[pretoken[i - 1]] == merge[0] and merge[1] == self.vocab[pretoken[i]]:
+                if self._vocab[pretoken[i - 1]] == merge[0] and merge[1] == self._vocab[pretoken[i]]:
                     # found match. Return merged bytes string.
-                    merged_bytes = self.vocab[pretoken[i - 1]] + self.vocab[pretoken[i]]
+                    merged_bytes = self._vocab[pretoken[i - 1]] + self._vocab[pretoken[i]]
                     # [a, b, c, d, e] -> [a, b, cd, e]
                     return pretoken[: i - 1] + [self._bytes_to_id[merged_bytes]] + pretoken[i + 1 :]
 
