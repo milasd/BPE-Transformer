@@ -1,5 +1,5 @@
 from pathlib import Path
-from bpe_transformer.settings import ENCODING_STD
+from bpe_transformer.tokenization.settings import ENCODING_STD
 from bpe_transformer.tokenization.tokenizer import Tokenizer
 
 

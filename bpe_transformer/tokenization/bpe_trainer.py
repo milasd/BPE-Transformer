@@ -117,9 +117,14 @@ class BPETrainer:
         # set self._vocab_pairs_counter
         self._vocab_pairs_counter = pair_counter
 
-        # Then build the heap from aggregated counts
-        for pair, total_count in pair_counter.items():
-            heapq.heappush(self._vocab_pairs_heap, self.MaxHeapItem(total_count, pair, self._vocab))
+        # # Then build the heap from aggregated counts
+        # for pair, total_count in pair_counter.items():
+        #     heapq.heappush(self._vocab_pairs_heap, self.MaxHeapItem(total_count, pair, self._vocab))
+        self._vocab_pairs_heap = [
+            self.MaxHeapItem(total_count, pair, self._vocab)
+            for pair, total_count in pair_counter.items()
+        ]
+        heapq.heapify(self._vocab_pairs_heap)
 
     def _merge_tokens(self, pretoken_counter: Counter[bytes, int]) -> None:
         """

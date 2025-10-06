@@ -6,7 +6,7 @@ from multiprocessing import Pool
 from collections import Counter
 from functools import reduce
 
-from bpe_transformer.settings import ENCODING_STD, PAT
+from bpe_transformer.tokenization.settings import ENCODING_STD, PAT
 
 """
 Apply pre-tokenization (following GPT-2 pattern) to an input file.
