@@ -1,7 +1,7 @@
 import re
 
 from pathlib import Path
-from bpe_transformer.tokenization.preprocessing.pretokenization import pretokenize_text
+from bpe_transformer.tokenization.preprocessing.pretokenization import pretokenize_text, split_on_special_tokens
 from bpe_transformer.tokenization.settings import ENCODING_STD
 from bpe_transformer.tokenization.tokenizer import Tokenizer
 
@@ -12,7 +12,7 @@ class BPETokenizer(Tokenizer):
     ):
         self._vocab = vocab
         self._merges = merges
-        self._special_tokens = special_tokens
+        self._special_tokens = set(special_tokens) if special_tokens else {}
 
     @property
     def vocab(self) -> dict[int, bytes]:
@@ -24,15 +24,15 @@ class BPETokenizer(Tokenizer):
 
     @property
     def special_tokens(self) -> list[str] | None:
-        return self._special_tokens
+        return list(self._special_tokens)
 
-    def encode_special_token(self, text: str) -> list[int]:
-        if not self.special_tokens:
+    def _encode_special_token(self, text: str) -> list[int]:
+        if not self._special_tokens:
             raise EnvironmentError("Cannot encode text with special tokens without defined special tokens")
 
         # 1. pretokenize text.
         #   take care of special tokens if there are any.
-        if self.special_tokens:
+        if self._special_tokens:
             # separate text chunks by special tokens (sort by length descending to match longest first)
             sorted_tokens = sorted(self.special_tokens, key=len, reverse=True)
             escaped_tokens = [re.escape(token) for token in sorted_tokens]
@@ -102,17 +102,61 @@ class BPETokenizer(Tokenizer):
         # Reverse vocab key-values for faster vocab id fetching.
         self._bytes_to_id = {v: k for k, v in self.vocab.items()}
 
-        if self.special_tokens:
-            raise ValueError("Special tokens not supported yet")
+        encoded_text: list[int] = []
 
-        pretokens = pretokenize_text(text)
+        if not self.special_tokens:
+            # no need to take care of special tokens; encode straightforward
+            pretokens = pretokenize_text(text)
+
+            # convert pretokens to list of ints for vocab merging.
+            pretokens_vocab = [self._initialize_pretoken_vocab(pretoken) for pretoken in pretokens]
+
+            encoded_text = self._encode_pretokens(pretokens_vocab=pretokens_vocab)
+            return encoded_text
+
+        # 1. pretokenize text.
+        #   take care of special tokens if there are any.
+        text_parts = split_on_special_tokens(text=text, training=False, special_tokens=self.special_tokens)
+
+        # pretokenize non-special tokens only.
+        for t in text_parts:
+            if t in self.special_tokens:
+                # no pre-tokenization; just get id from vocab.
+                encoded_text.append(self._bytes_to_id[t.encode(ENCODING_STD)])
+                continue
+
+            # get pretokens for text part.
+            pretokens = pretokenize_text(t)
+            pretokens_vocab = [self._initialize_pretoken_vocab(pretoken) for pretoken in pretokens]
+
+            # encode all pretokens
+            encoded_text_part = self._encode_pretokens(pretokens_vocab=pretokens_vocab)
+
+            # Add encoded text part to encoded text.
+            encoded_text.extend(encoded_text_part)
+
+        return encoded_text
+
+    def _encode_pretokens(self, pretokens_vocab: list[list[int]]) -> list[int]:
+        """
+        Given a list of pretokens, already mapped to their vocab ids,
+        will try to apply merging to each pretoken.
+
+        The merge to be applied shall always be the first one existing
+        inside self.merges list.
+
+        The function will try to merge the pretoken as much as possible.
+        If no merges are found/can be done anymore,
+        will skip to next pretoken.
+
+        Args:
+            pretokens_vocab: list of pretokens list with initial mapping to vocab
+
+        Return:
+            Encoded text, a list of ints containing final encoding of all tokens.
+        """
         encoded_text = []
-
-        # convert pretokens to list of ints for vocab merging.
-        pretokens_vocab = [self._initialize_pretoken_vocab(pretoken) for pretoken in pretokens]
-
-        # Try to apply the first merge from self.merges found
-        # in order, try to apply merges
+        # Try to apply the first merge from self.merges available to pretoken
         for i in range(len(pretokens_vocab)):
             # pretokenize every pretoken until it's not possible anymore.
             while len(pretokens_vocab[i]) >= 2:
@@ -127,6 +171,7 @@ class BPETokenizer(Tokenizer):
                 pretokens_vocab[i] = merged_token
 
             encoded_text.extend(pretokens_vocab[i])
+
         return encoded_text
 
     def decode(self, ids: list[int]) -> str:
