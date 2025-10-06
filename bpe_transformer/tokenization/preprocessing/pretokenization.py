@@ -95,6 +95,46 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
+def split_on_special_tokens(text: str, special_tokens: list[str] = None) -> list[str]:
+    """
+    Split text on special tokens to prevent merging across boundaries.
+
+    Args:
+        text: Text string to split
+        special_tokens: List of special tokens to split on
+
+    Returns:
+        List of text parts
+    """
+    if special_tokens:
+        # Create regex pattern to split on special tokens
+        # Sort it to take care of possible "overlapping/double" special tokens
+        sorted_tokens = sorted(special_tokens)
+        escaped_specials = [re.escape(sorted_tokens) for token in special_tokens]
+        split_pattern = "|".join(escaped_specials)
+        text_parts = re.split(split_pattern, text)
+    else:
+        text_parts = [text]
+    return text_parts
+
+
+def pretokenize_text(text: str) -> list[bytes]:
+    """
+    Apply GPT-2 pretokenization pattern to a text string.
+
+    Args:
+        text: Text string to pretokenize
+
+    Returns:
+        List of pretokens as bytes
+    """
+    pretokens = []
+    for match in re.finditer(PAT, text):
+        pretoken_bytes = match.group().encode(ENCODING_STD)
+        pretokens.append(pretoken_bytes)
+    return pretokens
+
+
 def pretokenize_chunk(file_path: Path, start: int, end: int, special_tokens: list[str] = None) -> Counter[bytes, int]:
     """
     Apply pretokenization to a chunk with defined start and end positions in a file.
@@ -117,23 +157,16 @@ def pretokenize_chunk(file_path: Path, start: int, end: int, special_tokens: lis
         counter: Counter[tuple[bytes], int] = Counter()
 
         # Split on special tokens to prevent merging across document boundaries
-        if special_tokens:
-            # Create regex pattern to split on special tokens
-            escaped_specials = [re.escape(token) for token in special_tokens]
-            split_pattern = "|".join(escaped_specials)
-            text_parts = re.split(split_pattern, chunk)
-        else:
-            text_parts = [chunk]
+        text_parts = split_on_special_tokens(chunk, special_tokens)
 
         # Pretokenize each part separately
         for part in text_parts:
             if not part:  # Skip empty parts
                 continue
-            # Find matching patterns for pretokens in each part using GPT-2 pattern
-            for match in re.finditer(PAT, part):
-                # bytes tuple version of the pretoken
-                b = tuple(match.group().encode(ENCODING_STD))
-                counter[b] += 1
+            # Use pretokenize_text helper
+            pretokens = pretokenize_text(part)
+            for pretoken in pretokens:
+                counter[tuple(pretoken)] += 1
         return counter
 
 
@@ -200,21 +233,16 @@ def serial_pretokenization(file_path: Path, special_tokens: list[str] = None) ->
             chunk = f.read(end - start).decode(ENCODING_STD)
 
             # Split on special tokens to prevent merging across document boundaries
-            if special_tokens:
-                # Create regex pattern to split on special tokens
-                escaped_specials = [re.escape(token) for token in special_tokens]
-                split_pattern = "|".join(escaped_specials)
-                text_parts = re.split(split_pattern, chunk)
-            else:
-                text_parts = [chunk]
+            text_parts = split_on_special_tokens(chunk, special_tokens)
 
             # Pretokenize each part separately
             for part in text_parts:
                 if not part:  # Skip empty parts
                     continue
-                for match in re.finditer(PAT, part):
-                    bytes_list = tuple(match.group().encode(ENCODING_STD))
-                    pretokens_counter[bytes_list] += 1
+                # Use pretokenize_text helper
+                pretokens = pretokenize_text(part)
+                for pretoken in pretokens:
+                    pretokens_counter[tuple(pretoken)] += 1
 
     return pretokens_counter
 

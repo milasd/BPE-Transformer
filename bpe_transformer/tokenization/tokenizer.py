@@ -13,13 +13,13 @@ class Tokenizer(ABC):
     def merges(self) -> list[tuple[bytes, bytes]]:
         pass
 
-    # @abstractmethod
-    # def encode(self):
-    #     pass
+    @abstractmethod
+    def encode(self, text: str) -> list[int]:
+        pass
 
-    # @abstractmethod
-    # def decode(self):
-    #     pass
+    @abstractmethod
+    def decode(self, ids: list[int]) -> str:
+        pass
 
     @classmethod
     def from_files(cls, vocab_filepath: Path, merges_filepath: Path, special_tokens=None) -> None:
