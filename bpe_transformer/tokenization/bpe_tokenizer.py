@@ -249,4 +249,32 @@ class BPETokenizer(Tokenizer):
         return merges
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
-        pass
+        """
+        Encodes multiple files/chunks.
+        Given an iterable of strings (e.g., a Python file handle),
+        return a generator that lazily yields token IDs for large files tokenization.
+
+        Args:
+            iterable: list of file handlers
+
+        Yield:
+            list of ints containing token
+        """
+        buffer = ""
+
+        for chunk in iterable:
+            buffer += chunk
+            last_newline = buffer.rfind("\n")
+
+            # If there's a newline before the end of chunk,
+            # Then we must process everything that come before it,
+            # And store the part of text after \n in buffer.
+            if last_newline != -1:
+                to_process = buffer[: last_newline + 1]
+                buffer = buffer[last_newline + 1 :]
+
+                yield from self.encode(to_process)
+
+        # If there's any remaining string in buffer, encode it.
+        if buffer:
+            yield from self.encode(buffer)

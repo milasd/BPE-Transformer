@@ -339,6 +339,12 @@ class BPETrainer:
         return pretoken_counter
 
     def save_trainer(self, output_dir: Path = Path(DEFAULT_OUTPUT_DIR / "tokenizer" / "bpe_trainer")) -> None:
+        """
+        Serializes the vocab and merges in individual files
+        and export to output directory.
+
+        Default is in project base directory/output/tokenizer/bpe_trainer.
+        """
         import pickle
 
         output_dir.mkdir(parents=True, exist_ok=True)

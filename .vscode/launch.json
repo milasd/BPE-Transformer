@@ -8,7 +8,7 @@
             "python": "${workspaceFolder}/.venv/bin/python",
             "module": "pytest",
             "args": [
-                "tests/test_tokenizer.py::test_overlapping_special_tokens",
+                "tests/test_tokenizer.py::test_encode_iterable_tinystories_sample_roundtrip",
                 "-v"
             ],
             "console": "integratedTerminal",
