@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
+from collections.abc import Iterable
+from collections.abc import Iterator
 
 
 class Tokenizer(ABC):
@@ -18,13 +19,13 @@ class Tokenizer(ABC):
         pass
 
     @abstractmethod
+    def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+        pass
+
+    @abstractmethod
     def decode(self, ids: list[int]) -> str:
         pass
 
     @classmethod
-    def from_files(cls, vocab_filepath: Path, merges_filepath: Path, special_tokens=None) -> None:
-        pass
-
-    @abstractmethod
-    def save_tokenizer(self, output_dir: Path) -> None:
+    def from_files(cls) -> None:
         pass
