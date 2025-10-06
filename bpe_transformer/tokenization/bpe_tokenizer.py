@@ -115,7 +115,7 @@ class BPETokenizer(Tokenizer):
             return encoded_text
 
         # 1. pretokenize text.
-        #   take care of special tokens if there are any.
+        # take care of special tokens if there are any.
         text_parts = split_on_special_tokens(text=text, training=False, special_tokens=self.special_tokens)
 
         # pretokenize non-special tokens only.

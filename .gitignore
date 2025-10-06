@@ -171,8 +171,9 @@ CHANGELOG.md
 
 *.sh
 
-tests/
 *copy.py
 *.txt
 debug_*.py
 test_bpe.py
+
+.vscode/
