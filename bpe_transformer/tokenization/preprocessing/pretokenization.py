@@ -2,9 +2,11 @@ import os
 import regex as re
 from pathlib import Path
 from typing import BinaryIO
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 from collections import Counter
 from functools import reduce
+
+from bpe_transformer.settings import ENCODING_STD, PAT
 
 """
 Apply pre-tokenization (following GPT-2 pattern) to an input file.
@@ -36,22 +38,20 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-# Pre-tokenization:
-# Regex-based pattern (used by GPT-2; Radford et al., 2019) from github.com/openai/tiktoken/pull/234/files
-PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-ENCODING_STD = "utf-8"
-
-
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
-    split_special_token: bytes,
+    special_tokens: list[str] = None,
 ) -> list[int]:
     """
     Chunk the file into parts that can be counted independently.
     May return fewer chunks if the boundaries end up overlapping.
     """
-    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+    # Convert special tokens to bytes for searching
+    if special_tokens:
+        split_tokens_bytes = [token.encode(ENCODING_STD) for token in special_tokens]
+    else:
+        split_tokens_bytes = [b"\n"]  # Default to newline if no special tokens
 
     # Get total file size in bytes
     file.seek(0, os.SEEK_END)
@@ -78,10 +78,16 @@ def find_chunk_boundaries(
                 chunk_boundaries[bi] = file_size
                 break
 
-            # Find the special token in the mini chunk
-            found_at = mini_chunk.find(split_special_token)
-            if found_at != -1:
-                chunk_boundaries[bi] = initial_position + found_at
+            # Find any of the special tokens in the mini chunk
+            earliest_pos = -1
+            for split_token in split_tokens_bytes:
+                found_at = mini_chunk.find(split_token)
+                if found_at != -1:
+                    if earliest_pos == -1 or found_at < earliest_pos:
+                        earliest_pos = found_at
+
+            if earliest_pos != -1:
+                chunk_boundaries[bi] = initial_position + earliest_pos
                 break
             initial_position += mini_chunk_size
 
@@ -132,7 +138,7 @@ def pretokenize_chunk(file_path: Path, start: int, end: int, special_tokens: lis
 
 
 def parallel_pretokenization(
-    file_path: Path, num_processes: int = None, split_token: bytes = b"<|endoftext|>", special_tokens: list[str] = None
+    file_path: Path, num_processes: int = None, special_tokens: list[str] = None
 ) -> Counter[bytes, int]:
     """
     Pallelized pretokenization using multiprocessing.
@@ -148,11 +154,11 @@ def parallel_pretokenization(
         Counter object with combined token counts from all chunks
     """
     if num_processes is None or num_processes == 0:
-        num_processes = cpu_count()
+        num_processes = 4
 
     # Get chunk boundaries
     with open(file_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, split_token)
+        boundaries = find_chunk_boundaries(f, num_processes, special_tokens)
 
     # Prepare arguments for parallel processes
     chunk_args = [(file_path, start, end, special_tokens) for start, end in zip(boundaries[:-1], boundaries[1:])]
@@ -167,9 +173,7 @@ def parallel_pretokenization(
     return pretokens_counter
 
 
-def serial_pretokenization(
-    file_path: Path, split_token: bytes = b"<|endoftext|>", special_tokens: list[str] = None
-) -> Counter[bytes, int]:
+def serial_pretokenization(file_path: Path, special_tokens: list[str] = None) -> Counter[bytes, int]:
     """
     Original serial implementation for pre-tokenization in text chunks.
     TODO: add support to multiple split tokens.
@@ -188,7 +192,7 @@ def serial_pretokenization(
 
     with open(file_path, "rb") as f:
         num_processes = 4
-        boundaries = find_chunk_boundaries(f, num_processes, split_token)
+        boundaries = find_chunk_boundaries(f, num_processes, special_tokens)
 
         pretokens_counter = Counter()
         for start, end in zip(boundaries[:-1], boundaries[1:]):
@@ -217,7 +221,6 @@ def serial_pretokenization(
 
 def pretokenize(
     file_path: Path,
-    split_token: bytes = b"<|endoftext|>",
     parallel_processing: bool | None = True,
     n_workers: int | None = 4,
     special_tokens: list[str] = None,
@@ -239,9 +242,7 @@ def pretokenize(
         Counter object with combined token counts from all chunks
     """
     return (
-        parallel_pretokenization(
-            file_path=file_path, split_token=split_token, num_processes=n_workers, special_tokens=special_tokens
-        )
+        parallel_pretokenization(file_path=file_path, num_processes=n_workers, special_tokens=special_tokens)
         if parallel_processing
-        else serial_pretokenization(file_path=file_path, split_token=split_token, special_tokens=special_tokens)
+        else serial_pretokenization(file_path=file_path, special_tokens=special_tokens)
     )

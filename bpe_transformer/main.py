@@ -1,4 +1,4 @@
-from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
+from bpe_transformer.tokenization.bpe_trainer import BPETrainer
 from multiprocessing import cpu_count
 from pathlib import Path
 
@@ -12,6 +12,6 @@ def train_bpe(
     if vocab_size < 255 + len(special_tokens):
         raise ValueError("Input vocab_size is invalid: value too small.")
 
-    bpe = BPETokenizer(vocab_size=vocab_size, special_tokens=special_tokens)
+    bpe = BPETrainer(vocab_size=vocab_size, special_tokens=special_tokens)
     bpe.train(input_path=input_path, num_processes=N_WORKERS)
     return bpe.vocab, bpe.merges

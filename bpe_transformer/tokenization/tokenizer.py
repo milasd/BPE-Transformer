@@ -13,10 +13,6 @@ class Tokenizer(ABC):
     def merges(self) -> list[tuple[bytes, bytes]]:
         pass
 
-    @abstractmethod
-    def train(self, input_path: Path) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-        pass
-
     # @abstractmethod
     # def encode(self):
     #     pass
@@ -25,10 +21,10 @@ class Tokenizer(ABC):
     # def decode(self):
     #     pass
 
-    # @abstractmethod
-    # def load_tokenizer(self):
-    #     pass
+    @classmethod
+    def from_files(cls, vocab_filepath: Path, merges_filepath: Path, special_tokens=None) -> None:
+        pass
 
-    # @abstractmethod
-    # def save_tokenizer(self):
-    #     pass
+    @abstractmethod
+    def save_tokenizer(self, output_dir: Path) -> None:
+        pass
