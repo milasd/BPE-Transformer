@@ -12,6 +12,7 @@ class BPETokenizer(Tokenizer):
         self._vocab = vocab
         self._merges = merges
         self._special_tokens = set(special_tokens) if special_tokens else {}
+        self._bytes_to_id_cache = None
 
     @property
     def vocab(self) -> dict[int, bytes]:
@@ -24,6 +25,13 @@ class BPETokenizer(Tokenizer):
     @property
     def special_tokens(self) -> list[str] | None:
         return list(self._special_tokens)
+
+    @property
+    def _bytes_to_id(self) -> dict[bytes, int]:
+        """Cached reverse vocabulary mapping for faster lookups."""
+        if self._bytes_to_id_cache is None:
+            self._bytes_to_id_cache = {v: k for k, v in self.vocab.items()}
+        return self._bytes_to_id_cache
 
     @classmethod
     def from_files(
@@ -53,8 +61,6 @@ class BPETokenizer(Tokenizer):
         return decoded_text.decode(ENCODING_STD, errors="replace")
 
     def encode(self, text: str) -> list[int]:
-        # Reverse vocab key-values for faster vocab id fetching.
-        self._bytes_to_id = {v: k for k, v in self.vocab.items()}
         encoded_text: list[int] = []
 
         # 1. pretokenize text.
