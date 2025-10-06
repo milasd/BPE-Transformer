@@ -38,8 +38,8 @@ class BPETokenizer(Tokenizer):
         cls, vocab_filepath: Path, merges_filepath: Path, special_tokens: list[str] | None = None
     ) -> "BPETokenizer":
         """
-        Creates an instance of BPETokenizer based on files for vocab and merges, 
-        and the list of special tokens to consider. 
+        Creates an instance of BPETokenizer based on files for vocab and merges,
+        and the list of special tokens to consider.
         Will add special tokens to vocab if they're not in the provided vocab file.
 
         Args:
@@ -78,8 +78,8 @@ class BPETokenizer(Tokenizer):
 
         First, the text is pretokenized, considering any special characters.
         The pretokens are mapped to the corresponding vocab ids.
-        
-        Then, the function will start to try merging the pretoken ids, 
+
+        Then, the function will start to try merging the pretoken ids,
         associating the merged bytes to its vocab id.
         The merging process is greedy, that is,
         the encoding will find the first merge inside the merges list
@@ -87,7 +87,7 @@ class BPETokenizer(Tokenizer):
         This is repeated to every pretoken, except special tokens,
         which are directly mapped to the vocab id.
 
-        The final token (after every possible merge) ids will be appended 
+        The final token (after every possible merge) ids will be appended
         to the encoded text, which is a list of every token id.
 
         Args:
@@ -122,7 +122,7 @@ class BPETokenizer(Tokenizer):
             encoded_text.extend(encoded_text_part)
 
         return encoded_text
-    
+
     def encode_parallel(self, text: str, chunk_size: int = 10000, n_workers: int = 4) -> list[int]:
         pass
 
@@ -182,6 +182,16 @@ class BPETokenizer(Tokenizer):
         return encoded_text
 
     def _find_pair_in_merges(self, pretoken: list[int]) -> list[int] | None:
+        """
+        Search for the first applicable merge inside merges list,
+        apply it to pretoken if any are found and return the post-merge token.
+
+        Args:
+            pretoken: list of ints (vocab ids)
+        Return:
+            If no possible merges are found, will return None;
+            If a merge is possible, will return the first post-merge token.
+        """
         # search for the first possible merge inside merges
         for merge in self.merges:
             for i in range(1, len(pretoken)):
@@ -195,6 +205,16 @@ class BPETokenizer(Tokenizer):
 
     @staticmethod
     def load_vocab(file_path: Path, special_tokens: list[str] | None) -> dict[int, bytes]:
+        """
+        Load vocab from a file path, adding special tokens to the vocab
+        if they're not in the loaded vocab file.
+
+        Args:
+            file_path: Path to file containing vocab only
+            special_tokens: list of special tokens to consider
+        Return:
+            a dict containing the vocab, matching id to bytes
+        """
         import pickle
 
         # Load vocab
@@ -214,6 +234,14 @@ class BPETokenizer(Tokenizer):
 
     @staticmethod
     def load_merges(file_path: Path) -> list[tuple[bytes, bytes]]:
+        """
+        Load merges list from a file path.
+
+        Args:
+            file_path: Path to file containing vocab only
+        Return:
+            the merge list containing tuples of merged bytes
+        """
         import pickle
 
         with open(file_path, "rb") as f:
