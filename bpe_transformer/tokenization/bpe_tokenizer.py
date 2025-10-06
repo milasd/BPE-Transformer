@@ -1,3 +1,4 @@
+from multiprocessing import Pool, cpu_count
 from bpe_transformer.tokenization.preprocessing.pretokenization import pretokenize_text, split_on_special_tokens
 from bpe_transformer.settings import ENCODING_STD
 from bpe_transformer.tokenization.tokenizer import Tokenizer
@@ -13,6 +14,14 @@ class BPETokenizer(Tokenizer):
         self._merges = merges
         self._special_tokens = set(special_tokens) if special_tokens else {}
         self._bytes_to_id_cache = None
+
+        # Lookup table for merging priority.
+        self._merges_priority = {merge: id for id, merge in enumerate(merges)}
+
+        # Add a cache of all encodings done,
+        # So that if we have to encode a word that has already been processed,
+        # We don't need to re-encode it
+        self._encoding_cache = {}
 
     @property
     def vocab(self) -> dict[int, bytes]:
@@ -123,9 +132,6 @@ class BPETokenizer(Tokenizer):
 
         return encoded_text
 
-    def encode_parallel(self, text: str, chunk_size: int = 10000, n_workers: int = 4) -> list[int]:
-        pass
-
     def _initialize_pretoken_vocab(self, pretoken: bytes) -> list[int]:
         """
         Given a pretoken in bytes, we'll construct their initial encoding
@@ -165,7 +171,17 @@ class BPETokenizer(Tokenizer):
         encoded_text = []
         # Try to apply the first merge from self.merges available to pretoken
         for i in range(len(pretokens_vocab)):
-            # pretokenize every pretoken until it's not possible anymore.
+            pretoken = pretokens_vocab[i].copy()
+            
+            # Check if pre-token is in cache.
+            if tuple(pretoken) in self._encoding_cache:
+                merged_token = self._encoding_cache.get(tuple(pretoken))
+                pretokens_vocab[i] = merged_token
+                encoded_text.extend(merged_token)
+                continue
+
+            # current_pretoken = pretokens_vocab[i]
+            # tokenize the pretoken until it's not possible anymore.
             while len(pretokens_vocab[i]) >= 2:
                 # search for each pair of pretoken bytes inside merges.
                 merged_token = self._find_pair_in_merges(pretokens_vocab[i])
@@ -177,6 +193,8 @@ class BPETokenizer(Tokenizer):
                 # successfully found merge pair; see if we can merge new token again.
                 pretokens_vocab[i] = merged_token
 
+            # Add new pretoken to cache.
+            self._encoding_cache[tuple(pretoken)] = tuple(pretokens_vocab[i])
             encoded_text.extend(pretokens_vocab[i])
 
         return encoded_text
@@ -192,16 +210,29 @@ class BPETokenizer(Tokenizer):
             If no possible merges are found, will return None;
             If a merge is possible, will return the first post-merge token.
         """
-        # search for the first possible merge inside merges
-        for merge in self.merges:
-            for i in range(1, len(pretoken)):
-                if self._vocab[pretoken[i - 1]] == merge[0] and merge[1] == self._vocab[pretoken[i]]:
-                    # found match. Return merged bytes string.
-                    merged_bytes = self._vocab[pretoken[i - 1]] + self._vocab[pretoken[i]]
-                    # [a, b, c, d, e] -> [a, b, cd, e]
-                    return pretoken[: i - 1] + [self._bytes_to_id[merged_bytes]] + pretoken[i + 1 :]
+        # inside all potential merges, will store the one that comes first in list of merges.
 
-        return None
+        first_priority = len(self.merges) + 1
+        merge_pos = -1
+
+        for i in range(1, len(pretoken)):
+            current_pair = (self._vocab[pretoken[i - 1]], self._vocab[pretoken[i]])
+
+            if current_pair in self._merges_priority:
+                # found potential merge. Check if found pair priority 
+                # is higher than other potential pairs found inside pretoken.
+                if first_priority > self._merges_priority[current_pair]:
+                     first_priority = self._merges_priority[current_pair]
+                     merge_pos = i - 1
+
+        # no merges happened
+        if merge_pos == -1:
+            return None
+        
+        # After we inspected all pairs and stored the closest merge, return the merged token
+        # [a, b, c, d, e] -> [a, b, cd, e]
+        merged_bytes = self._vocab[pretoken[merge_pos]] + self._vocab[pretoken[merge_pos + 1]]
+        return pretoken[: merge_pos] + [self._bytes_to_id[merged_bytes]] + pretoken[merge_pos + 2:] 
 
     @staticmethod
     def load_vocab(file_path: Path, special_tokens: list[str] | None) -> dict[int, bytes]:
@@ -248,7 +279,7 @@ class BPETokenizer(Tokenizer):
             merges: list[tuple[bytes, bytes]] = pickle.load(f)
         return merges
 
-    def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
+    def encode_iterable(self, iterable: Iterable[str], n_workers:int | None = 4) -> Iterable[int]:
         """
         Encodes multiple files/chunks.
         Given an iterable of strings (e.g., a Python file handle),
@@ -256,25 +287,56 @@ class BPETokenizer(Tokenizer):
 
         Args:
             iterable: list of file handlers
+            n_workers: Number of parallel workers (None or 1 = sequential)
 
         Yield:
             list of ints containing token
         """
+        # Sequential processing (no parallelization)
+        if n_workers is None or n_workers <= 1:
+            buffer = ""
+            for chunk in iterable:
+                buffer += chunk
+                last_newline = buffer.rfind('\n')
+
+                if last_newline != -1:
+                    to_process = buffer[:last_newline + 1]
+                    buffer = buffer[last_newline + 1:]
+                    yield from self.encode(to_process)
+
+            if buffer:
+                yield from self.encode(buffer)
+            return
+
+        # Parallel processing
         buffer = ""
+        text_batch = []
+        batch_size = n_workers * 10
 
-        for chunk in iterable:
-            buffer += chunk
-            last_newline = buffer.rfind("\n")
+        # Create pool once, reuse for all batches
+        with Pool(processes=n_workers) as pool:
+            for chunk in iterable:
+                buffer += chunk
+                last_newline = buffer.rfind('\n')
 
-            # If there's a newline before the end of chunk,
-            # Then we must process everything that come before it,
-            # And store the part of text after \n in buffer.
-            if last_newline != -1:
-                to_process = buffer[: last_newline + 1]
-                buffer = buffer[last_newline + 1 :]
+                if last_newline != -1:
+                    complete_text = buffer[:last_newline + 1]
+                    buffer = buffer[last_newline + 1:]
+                    text_batch.append(complete_text)
 
-                yield from self.encode(to_process)
+                    # Process batch when full
+                    if len(text_batch) >= batch_size:
+                        encoded_batch = pool.map(self.encode, text_batch, chunksize=5)
+                        for encoded in encoded_batch:
+                            yield from encoded
+                        text_batch = []
 
-        # If there's any remaining string in buffer, encode it.
+            # Process remaining batch
+            if text_batch:
+                encoded_batch = pool.map(self.encode, text_batch, chunksize=5)
+                for encoded in encoded_batch:
+                    yield from encoded
+
+        # Process remaining buffer
         if buffer:
             yield from self.encode(buffer)

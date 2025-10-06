@@ -114,7 +114,6 @@ def parallel_pretokenization(
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
-    training: bool | None = True,
     special_tokens: list[str] = None,
 ) -> list[int]:
     """
