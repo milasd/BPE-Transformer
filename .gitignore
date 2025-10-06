@@ -177,3 +177,5 @@ debug_*.py
 test_bpe.py
 
 .vscode/
+
+output/

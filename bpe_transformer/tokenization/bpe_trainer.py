@@ -3,6 +3,7 @@ import heapq
 from collections import Counter
 from pathlib import Path
 from collections.abc import Iterable
+from bpe_transformer.settings import DEFAULT_OUTPUT_DIR
 from bpe_transformer.tokenization.preprocessing import parallel_pretokenization
 
 
@@ -336,3 +337,17 @@ class BPETrainer:
             file_path=input_path, num_processes=num_processes, special_tokens=list(self._special_tokens)
         )
         return pretoken_counter
+
+
+    def save_trainer(self, output_dir: Path = Path(DEFAULT_OUTPUT_DIR/"tokenizer"/"bpe_trainer")) -> None:
+        import pickle
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save vocab
+        with open(output_dir / "vocab.pkl", "wb") as f:
+            pickle.dump(self._vocab, f)
+
+        # Save merges
+        with open(output_dir / "merges.pkl", "wb") as f:
+            pickle.dump(self._merges, f)
