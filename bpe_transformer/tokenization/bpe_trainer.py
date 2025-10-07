@@ -85,12 +85,12 @@ class BPETrainer:
         """
         self._vocab[id] = new_value
 
-    def train(self, input_path: Path, num_processes: int | None) -> None:
+    def train(self, input_path: Path, n_workers: int | None) -> None:
         """
         Train the BPE Tokenizer on an input file.
         """
         # Invoke pre-tokenization of input file
-        pretoken_counter = self._get_pretokenization(input_path=input_path, num_processes=num_processes)
+        pretoken_counter = self._get_pretokenization(input_path=input_path, n_workers=n_workers)
 
         # Initialize self._vocab_pairs_heap:
         # Counts frequency of adjacency pairs in pretoken_counter
@@ -323,7 +323,7 @@ class BPETrainer:
 
         return (tuple(merged_token), tuple(new_vocab_pos), iter(pre_merge_pos.items())) if found_pair else None
 
-    def _get_pretokenization(self, input_path: Path, num_processes: int | None) -> Counter:
+    def _get_pretokenization(self, input_path: Path, n_workers: int | None) -> Counter:
         """
         Call parallel pretokenization for a given input file.
 
@@ -334,7 +334,7 @@ class BPETrainer:
             Counter object with pre-token ocurrences in an input file.
         """
         pretoken_counter = parallel_pretokenization(
-            file_path=input_path, num_processes=num_processes, special_tokens=list(self._special_tokens)
+            file_path=input_path, n_workers=n_workers, special_tokens=list(self._special_tokens)
         )
         return pretoken_counter
 
