@@ -294,8 +294,43 @@ class BPETokenizer(Tokenizer):
         """
         if n_workers is None or n_workers <= 1:
             yield from self._encode_iterable_serial(iterable)
-            return
+        else:
+            yield from self._encode_iterable_parallel(iterable, n_workers)
 
+    def _encode_iterable_serial(self, iterable: Iterable[str]) -> Iterable[int]:
+        """
+        Lazy encoding of an iterable.
+
+        Args:
+            iterable: Iterable of text strings
+
+        Yields:
+            Token IDs
+        """
+        buffer = ""
+        for chunk in iterable:
+            buffer += chunk
+            last_newline = buffer.rfind("\n")
+
+            if last_newline != -1:
+                to_process = buffer[: last_newline + 1]
+                buffer = buffer[last_newline + 1 :]
+                yield from self.encode(to_process)
+
+        if buffer:
+            yield from self.encode(buffer)
+
+    def _encode_iterable_parallel(self, iterable: Iterable[str], n_workers: int) -> Iterable[int]:
+        """
+        Parallel encoding of an iterable using multiprocessing.
+
+        Args:
+            iterable: Iterable of text strings
+            n_workers: Number of parallel workers
+
+        Yields:
+            Token IDs
+        """
         buffer = ""
         text_batch = []
         batch_size = n_workers * 10
@@ -326,28 +361,5 @@ class BPETokenizer(Tokenizer):
                     yield from encoded
 
         # Process remaining buffer
-        if buffer:
-            yield from self.encode(buffer)
-
-    def _encode_iterable_serial(self, iterable: Iterable[str]) -> Iterable[int]:
-        """
-        Sequential encoding of an iterable (no parallelization).
-
-        Args:
-            iterable: Iterable of text strings
-
-        Yields:
-            Token IDs
-        """
-        buffer = ""
-        for chunk in iterable:
-            buffer += chunk
-            last_newline = buffer.rfind("\n")
-
-            if last_newline != -1:
-                to_process = buffer[: last_newline + 1]
-                buffer = buffer[last_newline + 1 :]
-                yield from self.encode(to_process)
-
         if buffer:
             yield from self.encode(buffer)
