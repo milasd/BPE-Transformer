@@ -279,7 +279,8 @@ class BPETokenizer(Tokenizer):
             merges: list[tuple[bytes, bytes]] = pickle.load(f)
         return merges
 
-    def encode_iterable(self, iterable: Iterable[str], n_workers:int | None = 4) -> Iterable[int]:
+
+    def encode_iterable(self, iterable: Iterable[str], n_workers:int | None = None) -> Iterable[int]:
         """
         Encodes multiple files/chunks.
         Given an iterable of strings (e.g., a Python file handle),
@@ -292,26 +293,14 @@ class BPETokenizer(Tokenizer):
         Yield:
             list of ints containing token
         """
-        # Sequential processing (no parallelization)
         if n_workers is None or n_workers <= 1:
-            buffer = ""
-            for chunk in iterable:
-                buffer += chunk
-                last_newline = buffer.rfind('\n')
-
-                if last_newline != -1:
-                    to_process = buffer[:last_newline + 1]
-                    buffer = buffer[last_newline + 1:]
-                    yield from self.encode(to_process)
-
-            if buffer:
-                yield from self.encode(buffer)
+            yield from self._encode_iterable_serial(iterable)
             return
 
-        # Parallel processing
         buffer = ""
         text_batch = []
         batch_size = n_workers * 10
+        chunk_size = 5
 
         # Create pool once, reuse for all batches
         with Pool(processes=n_workers) as pool:
@@ -326,17 +315,43 @@ class BPETokenizer(Tokenizer):
 
                     # Process batch when full
                     if len(text_batch) >= batch_size:
-                        encoded_batch = pool.map(self.encode, text_batch, chunksize=5)
+                        encoded_batch = pool.map(self.encode, text_batch, chunksize=chunk_size)
                         for encoded in encoded_batch:
                             yield from encoded
                         text_batch = []
 
             # Process remaining batch
             if text_batch:
-                encoded_batch = pool.map(self.encode, text_batch, chunksize=5)
+                encoded_batch = pool.map(self.encode, text_batch, chunksize=chunk_size)
                 for encoded in encoded_batch:
                     yield from encoded
 
         # Process remaining buffer
         if buffer:
             yield from self.encode(buffer)
+
+
+    def _encode_iterable_serial(self, iterable: Iterable[str]) -> Iterable[int]:
+        """
+        Sequential encoding of an iterable (no parallelization).
+
+        Args:
+            iterable: Iterable of text strings
+
+        Yields:
+            Token IDs
+        """
+        buffer = ""
+        for chunk in iterable:
+            buffer += chunk
+            last_newline = buffer.rfind('\n')
+
+            if last_newline != -1:
+                to_process = buffer[:last_newline + 1]
+                buffer = buffer[last_newline + 1:]
+                yield from self.encode(to_process)
+
+        if buffer:
+            yield from self.encode(buffer)
+
+
