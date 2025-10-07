@@ -9,10 +9,47 @@ from bpe_transformer.tokenization.preprocessing import parallel_pretokenization
 
 class BPETrainer:
     """
-    Implementation of a greedy Byte-Pair Encoding Tokenizer trainer.
+    Greedy Byte-Pair Encoding (BPE) tokenizer trainer.
+
+    This class implements the BPE algorithm for training a tokenizer on text data.
+    BPE iteratively merges the most frequent pairs of bytes/tokens to build a vocabulary
+    of subword units, enabling efficient tokenization of text.
+
+    The training process:
+        1. Pre-tokenizes input text using regex patterns
+        2. Initializes vocabulary with 256 base bytes + special tokens
+        3. Iteratively merges most frequent adjacent byte pairs
+        4. Continues until target vocabulary size is reached/no vocab pairs left to merge
+
+    Attributes:
+        vocab_size (int): Target vocabulary size (must be >= 256)
+        special_tokens (list[str] | None): Special tokens to include in vocabulary
+        vocab (dict[int, bytes]): Mapping from token IDs to byte sequences
+        merges (list[tuple[bytes, bytes]]): Ordered list of merge operations
+
+    Example:
+        >>> trainer = BPETrainer(vocab_size=10000, special_tokens=["<|endoftext|>"])
+        >>> trainer.train(input_path=Path("data.txt"), n_workers=4)
+        >>> trainer.save_trainer(output_dir=Path("./tokenizer"))
     """
 
     class MaxHeapItem:
+        """
+        Priority queue item for tracking byte pair frequencies.
+
+        Since Python's heapq is a minheap, we created this class for a max heap behavior,
+        so that the heapq has the most frequent pair as the first element.
+        We rewrite the "less than" operator behavior to achieve this (most frequent first).
+
+        On counting ties, pairs are compared lexicographically by their byte representation
+        (greater one first).
+
+        Args:
+            count (int): Frequency of this byte pair
+            pair (tuple[int, int]): Pair of token IDs
+            vocab (dict[int, bytes]): Vocabulary for byte representation lookup
+        """
+
         def __init__(self, count, pair, vocab):
             self.count = count
             self.pair = pair
@@ -30,6 +67,18 @@ class BPETrainer:
             return f"MaxHeapItem({self.count}, {self.pair})"
 
     def __init__(self, vocab_size: int, special_tokens: list[str] | None = None):
+        """
+        Initialize the BPE trainer.
+
+        Args:
+            vocab_size (int): Target vocabulary size. Must be at least 256 to accommodate
+                            all byte values. Final size may be smaller if no more pairs to merge.
+            special_tokens (list[str] | None): Optional list of special tokens (e.g., ["<|endoftext|>"])
+                                              to include in vocabulary. These tokens are never split.
+
+        Raises:
+            ValueError: If vocab_size < 256
+        """
         if vocab_size < 256:
             raise ValueError("Invalid Vocab size: must be at least 256")
 
@@ -39,25 +88,28 @@ class BPETrainer:
         # We can keep track of the most frequent pairs with a max heap.
         self._vocab_pairs_heap: list[BPETrainer.MaxHeapItem] = []
         self._merges: list[tuple[bytes, bytes]] = list()
-        self._special_tokens: set = set(special_tokens)
+        self._special_tokens: set = set(special_tokens) if special_tokens else set()
         self._vocab = self._build_initial_vocab()
         self._initial_vocab_size: int = len(self._vocab)  # 256 + len(special_tokens)
 
     @property
     def vocab(self) -> dict[int, bytes]:
-        """Return the vocabulary."""
+        """Return the current vocabulary mapping token IDs to byte sequences."""
         return self._vocab
 
     @property
     def merges(self) -> list[tuple[bytes, bytes]]:
+        """Return the ordered list of merge operations performed during training."""
         return self._merges
 
     @property
     def special_tokens(self) -> set[str]:
+        """Return the set of special tokens."""
         return self._special_tokens
 
     @property
     def vocab_size(self) -> int:
+        """Return the target vocabulary size."""
         return self._vocab_size
 
     def _build_initial_vocab(self) -> dict[int, bytes]:
@@ -78,16 +130,31 @@ class BPETrainer:
 
     def add_new_vocab(self, id: int, new_value: bytes) -> None:
         """
-        Add new token to the BPE vocab dict.
+        Add a new token to the vocabulary.
 
         Args:
-            new_value: The new token to be registered, as bytes.
+            id (int): Token ID to assign
+            new_value (bytes): Byte sequence for the new token
         """
         self._vocab[id] = new_value
 
     def train(self, input_path: Path, n_workers: int | None) -> None:
         """
-        Train the BPE Tokenizer on an input file.
+        Train the BPE tokenizer on an input file.
+
+        This method performs the complete BPE training pipeline:
+        1. Pre-tokenizes the input file using regex patterns
+        2. Counts frequency of all adjacent byte pairs
+        3. Iteratively merges the most frequent pairs until target vocab size is reached
+           or there are no pairs left to merge.
+
+        Args:
+            input_path (Path): Path to the text file to train on
+            n_workers (int | None): Number of parallel workers for pre-tokenization.
+                                   If None or 1, uses sequential processing.
+
+        Side Effects:
+            Updates self._vocab and self._merges with learned vocabulary and merge rules
         """
         # Invoke pre-tokenization of input file
         pretoken_counter = self._get_pretokenization(input_path=input_path, n_workers=n_workers)
@@ -101,9 +168,17 @@ class BPETrainer:
 
     def _initialize_pairs_cache(self, pretoken_counter: Counter) -> None:
         """
-        From the result of the pre-tokenization process,
-        counts the frequency of all adjacent pairs of bytes in all pretokens,
-        finally storing them as a max heap which orders the most frequent pairs.
+        Initialize the pairs frequency cache from pre-tokenized data.
+
+        Counts frequency of all adjacent byte pairs across all pretokens and
+        builds a max heap for efficient retrieval of the most frequent pairs.
+
+        Args:
+            pretoken_counter (Counter): Counter mapping pretokens (tuples of bytes) to their frequencies
+
+        Side Effects:
+            Sets self._vocab_pairs_counter and self._vocab_pairs_heap
+            Sets self._pair_to_pretokens for tracking which pretokens contain which pairs
         """
         # First, aggregate all pair counts
         pair_counter = Counter()
@@ -134,13 +209,24 @@ class BPETrainer:
 
     def _merge_tokens(self, pretoken_counter: Counter[bytes, int]) -> None:
         """
-        Given a dict of pretokens, merge pairs
+        Iteratively merge the most frequent byte pairs until target vocab size is reached.
+
+        This is the core BPE algorithm loop. At each iteration:
+        1. Pop the most frequent pair from the heap
+        2. Merge this pair in all pretokens containing it
+        3. Update pair frequencies based on new adjacencies
+        4. Add merged pair to vocabulary and merge list
+
+
+        After merging most frequent pairs, pretokens are updated with new vocab IDs.
+
+        Args:
+            pretoken_counter (Counter): Counter mapping pretokens to frequencies.
+                                       Modified in-place as merges are applied.
+
+        Side Effects:
+            Updates self._vocab and self._merges with new tokens and merge operations
         """
-        # Pre-token dict is in form {list[bytes]: count}.
-        # pre-token: {'low': 3, 'high': 2}
-        # ex.: {(l, o, w): 3, (h, i, g, h): 2}
-        # What I want to do is create a cache with counter of pairs.
-        # i have to iterate until there are no potential pairs anymore
 
         new_id = len(self.vocab)
         # We will keep merging our vocab pairs
@@ -240,16 +326,23 @@ class BPETrainer:
 
     def _get_adjacency_pairs(self, token: list[int], positions: list[int]) -> Iterable:
         """
-        Given a pretoken and a list of positions of a merged new element,
-        will return the adjacency pairs of integers and each frequency.
+        Extract adjacent pairs around newly merged tokens.
 
-        (1, 2, 60, 5, 60, 3, 5, 60) -> {(2, 60): 1, (60, 5): 1, (5, 60): 2, (60, 3): 1}
+        After a merge creates a new token at certain positions, this finds all pairs
+        involving the new token (left neighbor + new token, and new token + right neighbor).
+
+        Example:
+            token = (1, 2, 60, 5, 60, 3, 5, 60)
+            positions = [2, 4, 7]  # positions where token 60 appears
+
+            Returns: {(2, 60): 1, (60, 5): 2, (5, 60): 1, (60, 3): 1}
 
         Args:
-            token: post-merge token
-            positions: list of indexes of the merged new token
-        Return:
-            A counter of ocurrences of adjacency pairs of the merged token.
+            token (list[int]): Post-merge token as list of vocab IDs
+            positions (list[int]): Indices where the merged token appears
+
+        Returns:
+            Iterator of (pair, count) tuples for adjacent pairs around merged positions
         """
         adjacent_pairs = Counter()
 
@@ -265,25 +358,34 @@ class BPETrainer:
 
         return iter(adjacent_pairs.items())
 
-    # todo: rewrite __lr__ for max heap and remove * (-1) for counter.
     def _merge_pair(self, pretoken: list[int], pair: tuple[int], vocab_id: int) -> tuple[tuple[int], tuple[int]] | None:
         """
-        Given a list of vocab indexes of a word
-        (which contains 0-255 only if no merges happened yet),
-        replace a desired pair with the new index of the vocab.
+        Replace all occurrences of a byte pair in a pretoken with a new vocab ID.
 
-        Eg.:
-        pretoken = [2, 16, 45, 33, 1, 16, 45], pair = (16, 45), vocab_id = 334
-        -> return [2, 334, 33, 1, 334], [(2, 334), (1, 334)], 2
+        Scans through the pretoken and replaces every instance of the specified pair
+        with the new merged token ID. Also tracks which pairs are removed by the merge
+        for frequency updating.
+
+        Example:
+            pretoken = [2, 16, 45, 33, 1, 16, 45]
+            pair = (16, 45)
+            vocab_id = 334
+
+            Returns: ([2, 334, 33, 1, 334], [1, 4], iterator of (removed pairs, count))
 
         Args:
-            pretoken: A pre-token consisting of a list of ids in the vocab
-            pair: Tuple of ints of the pair we want to replace with a single vocab_id
-            vocab_id: the vocab_id to replace the pair.
-        Return:
-            If no merges were made, return None.
-            Else, return:   updated pretoken after substitutions,
-                            and an iterable containing the position(indexes) of the new merged int.
+            pretoken (list[int]): Pre-token as list of vocab IDs
+            pair (tuple[int, int]): Pair of token IDs to merge
+            vocab_id (int): New vocab ID to assign to the merged pair
+
+        Returns:
+            None if pair not found in pretoken, otherwise a tuple containing:
+            - Merged token as tuple of ints
+            - Positions where new vocab_id appears as tuple of ints
+            - Iterator of (removed_pair, count) tuples
+
+        Raises:
+            ValueError: If pretoken length < 2
         """
         if len(pretoken) < 2:
             raise ValueError("Merge pair call invalid: pre-token len. < 2")
@@ -325,13 +427,17 @@ class BPETrainer:
 
     def _get_pretokenization(self, input_path: Path, n_workers: int | None) -> Counter:
         """
-        Call parallel pretokenization for a given input file.
+        Pre-tokenize the input file using regex patterns.
+
+        Splits text into pretokens (words, numbers, punctuation) and counts their frequencies.
+        Uses parallel processing if n_workers > 1.
 
         Args:
-            input_path: Path to the data file to pretokenize.
+            input_path (Path): Path to the data file to pretokenize
+            n_workers (int | None): Number of parallel workers. None or 1 for sequential.
 
-        Return:
-            Counter object with pre-token ocurrences in an input file.
+        Returns:
+            Counter mapping pretokens (as tuples of bytes) to their occurrence counts
         """
         pretoken_counter = parallel_pretokenization(
             file_path=input_path, n_workers=n_workers, special_tokens=list(self._special_tokens)
@@ -340,10 +446,18 @@ class BPETrainer:
 
     def save_trainer(self, output_dir: Path = Path(DEFAULT_OUTPUT_DIR / "tokenizer" / "bpe_trainer")) -> None:
         """
-        Serializes the vocab and merges in individual files
-        and export to output directory.
+        Save the trained vocabulary and merges to disk.
 
-        Default is in project base directory/output/tokenizer/bpe_trainer.
+        Serializes the vocabulary and merge rules as pickle files in the specified directory.
+        Creates two files: vocab.pkl and merges.pkl.
+
+        Args:
+            output_dir (Path): Directory to save the files.
+                             Defaults to {project_root}/output/tokenizer/bpe_trainer
+
+        Side Effects:
+            Creates output_dir if it doesn't exist
+            Writes vocab.pkl and merges.pkl to output_dir
         """
         import pickle
 
