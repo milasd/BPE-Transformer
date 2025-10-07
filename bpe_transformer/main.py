@@ -13,5 +13,5 @@ def train_bpe(
         raise ValueError("Input vocab_size is invalid: value too small.")
 
     bpe = BPETrainer(vocab_size=vocab_size, special_tokens=special_tokens)
-    bpe.train(input_path=input_path, num_processes=N_WORKERS)
+    bpe.train(input_path=input_path, n_workers=N_WORKERS)
     return bpe.vocab, bpe.merges

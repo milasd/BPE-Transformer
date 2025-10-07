@@ -1,4 +1,4 @@
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 from bpe_transformer.tokenization.preprocessing.pretokenization import pretokenize_text, split_on_special_tokens
 from bpe_transformer.settings import ENCODING_STD
 from bpe_transformer.tokenization.tokenizer import Tokenizer
@@ -172,7 +172,7 @@ class BPETokenizer(Tokenizer):
         # Try to apply the first merge from self.merges available to pretoken
         for i in range(len(pretokens_vocab)):
             pretoken = pretokens_vocab[i].copy()
-            
+
             # Check if pre-token is in cache.
             if tuple(pretoken) in self._encoding_cache:
                 merged_token = self._encoding_cache.get(tuple(pretoken))
@@ -219,20 +219,20 @@ class BPETokenizer(Tokenizer):
             current_pair = (self._vocab[pretoken[i - 1]], self._vocab[pretoken[i]])
 
             if current_pair in self._merges_priority:
-                # found potential merge. Check if found pair priority 
+                # found potential merge. Check if found pair priority
                 # is higher than other potential pairs found inside pretoken.
                 if first_priority > self._merges_priority[current_pair]:
-                     first_priority = self._merges_priority[current_pair]
-                     merge_pos = i - 1
+                    first_priority = self._merges_priority[current_pair]
+                    merge_pos = i - 1
 
         # no merges happened
         if merge_pos == -1:
             return None
-        
+
         # After we inspected all pairs and stored the closest merge, return the merged token
         # [a, b, c, d, e] -> [a, b, cd, e]
         merged_bytes = self._vocab[pretoken[merge_pos]] + self._vocab[pretoken[merge_pos + 1]]
-        return pretoken[: merge_pos] + [self._bytes_to_id[merged_bytes]] + pretoken[merge_pos + 2:] 
+        return pretoken[:merge_pos] + [self._bytes_to_id[merged_bytes]] + pretoken[merge_pos + 2 :]
 
     @staticmethod
     def load_vocab(file_path: Path, special_tokens: list[str] | None) -> dict[int, bytes]:
@@ -279,8 +279,7 @@ class BPETokenizer(Tokenizer):
             merges: list[tuple[bytes, bytes]] = pickle.load(f)
         return merges
 
-
-    def encode_iterable(self, iterable: Iterable[str], n_workers:int | None = None) -> Iterable[int]:
+    def encode_iterable(self, iterable: Iterable[str], n_workers: int | None = None) -> Iterable[int]:
         """
         Encodes multiple files/chunks.
         Given an iterable of strings (e.g., a Python file handle),
@@ -306,11 +305,11 @@ class BPETokenizer(Tokenizer):
         with Pool(processes=n_workers) as pool:
             for chunk in iterable:
                 buffer += chunk
-                last_newline = buffer.rfind('\n')
+                last_newline = buffer.rfind("\n")
 
                 if last_newline != -1:
-                    complete_text = buffer[:last_newline + 1]
-                    buffer = buffer[last_newline + 1:]
+                    complete_text = buffer[: last_newline + 1]
+                    buffer = buffer[last_newline + 1 :]
                     text_batch.append(complete_text)
 
                     # Process batch when full
@@ -330,7 +329,6 @@ class BPETokenizer(Tokenizer):
         if buffer:
             yield from self.encode(buffer)
 
-
     def _encode_iterable_serial(self, iterable: Iterable[str]) -> Iterable[int]:
         """
         Sequential encoding of an iterable (no parallelization).
@@ -344,14 +342,12 @@ class BPETokenizer(Tokenizer):
         buffer = ""
         for chunk in iterable:
             buffer += chunk
-            last_newline = buffer.rfind('\n')
+            last_newline = buffer.rfind("\n")
 
             if last_newline != -1:
-                to_process = buffer[:last_newline + 1]
-                buffer = buffer[last_newline + 1:]
+                to_process = buffer[: last_newline + 1]
+                buffer = buffer[last_newline + 1 :]
                 yield from self.encode(to_process)
 
         if buffer:
             yield from self.encode(buffer)
-
-

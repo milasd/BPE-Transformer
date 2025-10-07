@@ -52,7 +52,7 @@ def pretokenize(
 
     Args:
         file_path: Path to the input file
-        num_processes: Number of processes to use (defaults to CPU count)
+        n_workers: Number of processes to use (defaults to CPU count)
         split_token: Token to use for chunk boundaries
         parallel_processing: If true, will parallelize the pretokenization processing.
         n_workers: Number of workers for parallel processing if it's selected; Default: 4
@@ -63,7 +63,7 @@ def pretokenize(
     """
     return (
         parallel_pretokenization(
-            file_path=file_path, training=training, num_processes=n_workers, special_tokens=special_tokens
+            file_path=file_path, training=training, n_workers=n_workers, special_tokens=special_tokens
         )
         if parallel_processing
         else serial_pretokenization(file_path=file_path, training=training, special_tokens=special_tokens)
@@ -71,7 +71,7 @@ def pretokenize(
 
 
 def parallel_pretokenization(
-    file_path: Path, num_processes: int = None, training: bool | None = True, special_tokens: list[str] = None
+    file_path: Path, n_workers: int = None, training: bool | None = True, special_tokens: list[str] = None
 ) -> Counter[bytes, int]:
     """
     Pallelized pretokenization using multiprocessing.
@@ -79,22 +79,22 @@ def parallel_pretokenization(
 
     Args:
         file_path: Path to the input file
-        num_processes: Number of processes to use (defaults to CPU count)
+        n_workers: Number of processes to use (defaults to CPU count)
         split_token: Token to use for chunk boundaries
         special_tokens: List of special tokens to keep intact
 
     Returns:
         Counter object with combined token counts from all chunks
     """
-    if num_processes is None or num_processes == 0:
-        num_processes = 4
+    if n_workers is None or n_workers == 0:
+        n_workers = 4
 
-    if num_processes > cpu_count():
-        num_processes = cpu_count()
+    if n_workers > cpu_count():
+        n_workers = cpu_count()
 
     # Get chunk boundaries
     with open(file_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, special_tokens)
+        boundaries = find_chunk_boundaries(f, n_workers, special_tokens)
 
     # Prepare arguments for parallel processes
     chunk_args = [
@@ -102,7 +102,7 @@ def parallel_pretokenization(
     ]
 
     # Pretokenize chunks in parallel
-    with Pool(processes=num_processes) as pool:
+    with Pool(processes=n_workers) as pool:
         chunk_pretoken_counters = pool.starmap(pretokenize_chunk, chunk_args)
 
     # Combine all chunks pretoken counters
@@ -264,7 +264,7 @@ def serial_pretokenization(
         training: boolean defining if the pre-tokens are for training or not.
                   if it's for training, special tokens will not be included in text parts.
                   else, special tokens will be added as separate elements as they are, and never pretokenized.
-        num_processes: Number of processes to use (defaults to CPU count)
+        n_workers: Number of processes to use (defaults to CPU count)
         split_token: Token to use for chunk boundaries
         special_tokens: List of special tokens to keep intact
 
@@ -275,8 +275,8 @@ def serial_pretokenization(
         special_tokens = []
 
     with open(file_path, "rb") as f:
-        num_processes = 4
-        boundaries = find_chunk_boundaries(f, num_processes, special_tokens)
+        n_workers = 4
+        boundaries = find_chunk_boundaries(f, n_workers, special_tokens)
 
         pretokens_counter = Counter()
         for start, end in zip(boundaries[:-1], boundaries[1:]):
