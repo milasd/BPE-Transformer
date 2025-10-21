@@ -179,3 +179,5 @@ test_bpe.py
 .vscode/
 
 output/
+drafts/
+.DS_Store
