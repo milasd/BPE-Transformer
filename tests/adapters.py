@@ -11,7 +11,7 @@ from torch import Tensor
 
 from bpe_transformer import train_bpe
 from bpe_transformer.model.modules.scaled_dot_product_attention import scaled_dot_product_attention
-from bpe_transformer.model.modules.multihead_self_attention import MultiheadSelfAttention
+from bpe_transformer.model.modules.multihead_self_attention import MultiHeadSelfAttention
 from bpe_transformer.model.modules.softmax import softmax
 from bpe_transformer.model.modules.embedding import Embedding
 from bpe_transformer.model.modules.rms_norm import RMSNorm
@@ -153,8 +153,8 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    # Create MultiheadSelfAttention instance (device and dtype from input)
-    mha = MultiheadSelfAttention(
+    # Create MultiHeadSelfAttention instance (device and dtype from input)
+    mha = MultiHeadSelfAttention(
         d_model=d_model,
         num_heads=num_heads,
         device=in_features.device,
@@ -212,9 +212,18 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    # mha = MultiheadSelfAttention(d_model=d_model, num_heads=num_heads, )
-    raise NotImplementedError
+    rope = RoPE(theta, d_k=d_model//num_heads, max_seq_len=max_seq_len)
+    mha = MultiHeadSelfAttention(d_model, num_heads, device=in_features.device, dtype=in_features.dtype, rope=rope)
+    mha.load_state_dict(
+        {
+            "w_q.weights": q_proj_weight,
+            "w_k.weights": k_proj_weight,
+            "w_v.weights": v_proj_weight,
+            "w_o.weights": o_proj_weight,
+        }
+    )
 
+    return mha.forward(x=in_features, token_positions=token_positions)
 
 def run_rope(
     d_k: int,
