@@ -155,7 +155,10 @@ def run_multihead_self_attention(
     """
     # Create MultiheadSelfAttention instance (device and dtype from input)
     mha = MultiheadSelfAttention(
-        d_model=d_model, num_heads=num_heads
+        d_model=d_model,
+        num_heads=num_heads,
+        device=in_features.device,
+        dtype=in_features.dtype
     )
 
     # Load weights into the model
