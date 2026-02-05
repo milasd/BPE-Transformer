@@ -155,10 +155,7 @@ def run_multihead_self_attention(
     """
     # Create MultiHeadSelfAttention instance (device and dtype from input)
     mha = MultiHeadSelfAttention(
-        d_model=d_model,
-        num_heads=num_heads,
-        device=in_features.device,
-        dtype=in_features.dtype
+        d_model=d_model, num_heads=num_heads, device=in_features.device, dtype=in_features.dtype
     )
 
     # Load weights into the model
@@ -212,7 +209,7 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    rope = RoPE(theta, d_k=d_model//num_heads, max_seq_len=max_seq_len)
+    rope = RoPE(theta, d_k=d_model // num_heads, max_seq_len=max_seq_len)
     mha = MultiHeadSelfAttention(d_model, num_heads, device=in_features.device, dtype=in_features.dtype, rope=rope)
     mha.load_state_dict(
         {
@@ -224,6 +221,7 @@ def run_multihead_self_attention_with_rope(
     )
 
     return mha.forward(x=in_features, token_positions=token_positions)
+
 
 def run_rope(
     d_k: int,
