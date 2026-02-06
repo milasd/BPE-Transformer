@@ -17,6 +17,7 @@ from bpe_transformer.model.modules.embedding import Embedding
 from bpe_transformer.model.modules.rms_norm import RMSNorm
 from bpe_transformer.model.modules.rope import RoPE
 from bpe_transformer.model.modules.swiglu import SwiGLU
+from bpe_transformer.model.transformer_block import Transformer
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 from bpe_transformer.model.modules.linear import Linear
 
@@ -317,7 +318,37 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    rope = RoPE(
+        theta=theta,
+        d_k=d_model // num_heads,
+        max_seq_len=max_seq_len,
+        device=in_features.device,
+        dtype=in_features.dtype,
+    )
+    transfomer_block = Transformer(
+        d_model=d_model, num_heads=num_heads, d_ff=d_ff, rope=rope, device=in_features.device, dtype=in_features.dtype
+    )
+
+    # Map the test's state dict keys to your model's keys
+    mapped_weights = {
+        "mha.w_q.weights": weights["attn.q_proj.weight"],
+        "mha.w_k.weights": weights["attn.k_proj.weight"],
+        "mha.w_v.weights": weights["attn.v_proj.weight"],
+        "mha.w_o.weights": weights["attn.output_proj.weight"],
+        "ff.w1.weights": weights["ffn.w1.weight"],
+        "ff.w2.weights": weights["ffn.w2.weight"],
+        "ff.w3.weights": weights["ffn.w3.weight"],
+        "rms_norm1.weights": weights["ln1.weight"],
+        "rms_norm2.weights": weights["ln2.weight"],
+    }
+
+    # Load weights into the transformer block
+    transfomer_block.load_state_dict(mapped_weights)
+
+    batch_size, seq_len, _ = in_features.shape
+    token_positions = torch.arange(seq_len, device=in_features.device).unsqueeze(0).expand(batch_size, -1)
+
+    return transfomer_block.forward(x=in_features, token_positions=token_positions)
 
 
 def run_transformer_lm(
@@ -438,7 +469,10 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    return SwiGLU.silu(in_features)
+    from bpe_transformer.model.modules.swiglu import SiLU
+
+    silu = SiLU()
+    return silu(in_features)
 
 
 def run_get_batch(

@@ -30,4 +30,4 @@ class RMSNorm(nn.Module):
         return rms_norm.to(in_dtype)
 
     def _norm(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.rsqrt((x.pow(2)).mean(dim=-1, keepdim=True) + self.eps)
+        return torch.sqrt((x.pow(2)).mean(dim=-1, keepdim=True) + self.eps)
