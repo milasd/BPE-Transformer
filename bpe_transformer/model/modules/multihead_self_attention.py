@@ -51,26 +51,6 @@ class MultiHeadSelfAttention(nn.Module):
         )
         q, k, v = qkv.unbind(0)
 
-        # # Split into multiple heads
-        # q_h = rearrange(
-        #     q,
-        #     "... seq_len (num_heads dim_head) -> ... num_heads seq_len dim_head",
-        #     num_heads=self.num_heads,
-        #     dim_head=self.d_head,
-        # )
-        # k_h = rearrange(
-        #     k,
-        #     "... seq_len (num_heads dim_head) -> ... num_heads seq_len dim_head",
-        #     num_heads=self.num_heads,
-        #     dim_head=self.d_head,
-        # )
-        # v_h = rearrange(
-        #     v,
-        #     "... seq_len (num_heads dim_head) -> ... num_heads seq_len dim_head",
-        #     num_heads=self.num_heads,
-        #     dim_head=self.d_head,
-        # )
-
         # Add RoPE Embedding to Q and K
         if self.rope:
             q = self.rope(q, token_positions)
