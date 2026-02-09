@@ -174,8 +174,11 @@ CHANGELOG.md
 *copy.py
 # *.txt
 debug_*.py
+compare_snapshot.py
 test_bpe.py
 
 .vscode/
 
 output/
+drafts/
+.DS_Store

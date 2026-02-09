@@ -6,7 +6,9 @@ Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decod
 ```
 bpe_transformer/
     ├── tokenization/       # BPE tokenizer implementation
-    ├── transformer/        # Transformer model implementation
+    ├── model/              # Transformer model implementation
+    │   ├── modules/        # Core transformer components
+    │   └── transformer_lm.py
     └── settings.py         # Configuration settings
 
 notebooks/             # Jupyter notebooks for demonstrations
@@ -143,6 +145,56 @@ with open(corpus_path) as f:
 
 print(ids)
 print(len(ids))
+```
+
+---
+
+### Transformer Model
+
+The transformer implementation can be found in `bpe_transformer/model`.
+
+```
+bpe_transformer/
+  └── model/
+      ├── modules/                      # Core building blocks
+      │   ├── __init__.py
+      │   ├── embedding.py              # Token embeddings
+      │   ├── linear.py                 # Bias-free linear layer
+      │   ├── rms_norm.py               # RMSNorm layer
+      │   ├── rope.py                   # Rotary Position Embeddings
+      │   ├── scaled_dot_product_attention.py
+      │   ├── multihead_self_attention.py
+      │   ├── swiglu.py                 # SwiGLU feedforward
+      │   └── transformer_block.py      # Transformer block
+      ├── __init__.py
+      └── transformer_lm.py             # Language model
+```
+
+#### **Usage**
+
+```python
+from bpe_transformer.model import TransformerLM
+from bpe_transformer.model.modules import RoPE
+
+# Create RoPE embeddings
+rope = RoPE(theta=10000.0, d_k=64, max_seq_len=2048)
+
+# Initialize model
+model = TransformerLM(
+    vocab_size=10000,
+    context_length=2048,
+    num_layers=12,
+    d_model=768,
+    d_ff=2048,
+    num_heads=12,
+    rope=rope
+)
+
+# Forward pass
+import torch
+token_ids = torch.randint(0, 10000, (2, 128))  # (batch, seq_len)
+token_positions = torch.arange(128)
+logits = model(token_ids, token_positions)  # (batch, seq_len, vocab_size)
 ```
 
 ## Testing
