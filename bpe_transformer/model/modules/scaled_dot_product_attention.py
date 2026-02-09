@@ -15,7 +15,7 @@ def scaled_dot_product_attention(
 
     # Apply '-inf' mask to pre-softmax values
     if mask is not None:
-        score.masked_fill_(mask == False, value=float("-inf"))
+        score.masked_fill_(~mask, value=float("-inf"))
         print(score)
     normalized_score = softmax(score, i=-1)
     attention = torch.einsum("...nm, ...mv -> ...nv", normalized_score, v)

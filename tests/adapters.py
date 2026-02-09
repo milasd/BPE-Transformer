@@ -18,6 +18,7 @@ from bpe_transformer.model.modules.rms_norm import RMSNorm
 from bpe_transformer.model.modules.rope import RoPE
 from bpe_transformer.model.modules.swiglu import SwiGLU
 from bpe_transformer.model.transformer_block import Transformer
+from bpe_transformer.model.transformer_lm import TransformerLM
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 from bpe_transformer.model.modules.linear import Linear
 
@@ -430,7 +431,45 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    rope = RoPE(theta=rope_theta, d_k=d_model // num_heads, max_seq_len=context_length, device=in_indices.device)
+    transformer_lm = TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        num_layers=num_layers,
+        d_model=d_model,
+        d_ff=d_ff,
+        num_heads=num_heads,
+        rope=rope,
+        device=in_indices.device,
+    )
+
+    # Map weights from test format to model format
+    mapped_weights = {
+        "token_embedding.embeddings": weights["token_embeddings.weight"],
+        "norm.weights": weights["ln_final.weight"],
+        "linear.weights": weights["lm_head.weight"],
+    }
+
+    # Map weights for each transformer block
+    for i in range(num_layers):
+        mapped_weights.update(
+            {
+                f"transformer_blocks.{i}.mha.w_q.weights": weights[f"layers.{i}.attn.q_proj.weight"],
+                f"transformer_blocks.{i}.mha.w_k.weights": weights[f"layers.{i}.attn.k_proj.weight"],
+                f"transformer_blocks.{i}.mha.w_v.weights": weights[f"layers.{i}.attn.v_proj.weight"],
+                f"transformer_blocks.{i}.mha.w_o.weights": weights[f"layers.{i}.attn.output_proj.weight"],
+                f"transformer_blocks.{i}.ff.w1.weights": weights[f"layers.{i}.ffn.w1.weight"],
+                f"transformer_blocks.{i}.ff.w2.weights": weights[f"layers.{i}.ffn.w2.weight"],
+                f"transformer_blocks.{i}.ff.w3.weights": weights[f"layers.{i}.ffn.w3.weight"],
+                f"transformer_blocks.{i}.rms_norm1.weights": weights[f"layers.{i}.ln1.weight"],
+                f"transformer_blocks.{i}.rms_norm2.weights": weights[f"layers.{i}.ln2.weight"],
+            }
+        )
+
+    transformer_lm.load_state_dict(mapped_weights)
+
+    token_positions = torch.arange(in_indices.shape[-1], device=in_indices.device)
+    return transformer_lm(x=in_indices, token_positions=token_positions)
 
 
 def run_rmsnorm(

@@ -1,6 +1,5 @@
 import torch
 
-from bpe_transformer.model.modules.linear import Linear
 from bpe_transformer.model.modules.multihead_self_attention import MultiHeadSelfAttention
 from bpe_transformer.model.modules.rms_norm import RMSNorm
 from bpe_transformer.model.modules.rope import RoPE
