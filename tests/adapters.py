@@ -160,12 +160,13 @@ def run_multihead_self_attention(
         d_model=d_model, num_heads=num_heads, device=in_features.device, dtype=in_features.dtype
     )
 
+    # Concatenate Q, K, V weights into fused QKV weight
+    qkv_weight = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=0)
+
     # Load weights into the model
     mha.load_state_dict(
         {
-            "w_q.weights": q_proj_weight,
-            "w_k.weights": k_proj_weight,
-            "w_v.weights": v_proj_weight,
+            "w_qkv.weights": qkv_weight,
             "w_o.weights": o_proj_weight,
         }
     )
@@ -213,11 +214,13 @@ def run_multihead_self_attention_with_rope(
     """
     rope = RoPE(theta, d_k=d_model // num_heads, max_seq_len=max_seq_len)
     mha = MultiHeadSelfAttention(d_model, num_heads, device=in_features.device, dtype=in_features.dtype, rope=rope)
+
+    # Concatenate Q, K, V weights into fused QKV weight
+    qkv_weight = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=0)
+
     mha.load_state_dict(
         {
-            "w_q.weights": q_proj_weight,
-            "w_k.weights": k_proj_weight,
-            "w_v.weights": v_proj_weight,
+            "w_qkv.weights": qkv_weight,
             "w_o.weights": o_proj_weight,
         }
     )
@@ -331,10 +334,13 @@ def run_transformer_block(
     )
 
     # Map the test's state dict keys to your model's keys
+    # Concatenate Q, K, V weights into fused QKV weight
+    qkv_weight = torch.cat(
+        [weights["attn.q_proj.weight"], weights["attn.k_proj.weight"], weights["attn.v_proj.weight"]], dim=0
+    )
+
     mapped_weights = {
-        "mha.w_q.weights": weights["attn.q_proj.weight"],
-        "mha.w_k.weights": weights["attn.k_proj.weight"],
-        "mha.w_v.weights": weights["attn.v_proj.weight"],
+        "mha.w_qkv.weights": qkv_weight,
         "mha.w_o.weights": weights["attn.output_proj.weight"],
         "ff.w1.weights": weights["ffn.w1.weight"],
         "ff.w2.weights": weights["ffn.w2.weight"],
@@ -452,11 +458,19 @@ def run_transformer_lm(
 
     # Map weights for each transformer block
     for i in range(num_layers):
+        # Concatenate Q, K, V weights into fused QKV weight
+        qkv_weight = torch.cat(
+            [
+                weights[f"layers.{i}.attn.q_proj.weight"],
+                weights[f"layers.{i}.attn.k_proj.weight"],
+                weights[f"layers.{i}.attn.v_proj.weight"],
+            ],
+            dim=0,
+        )
+
         mapped_weights.update(
             {
-                f"transformer_blocks.{i}.mha.w_q.weights": weights[f"layers.{i}.attn.q_proj.weight"],
-                f"transformer_blocks.{i}.mha.w_k.weights": weights[f"layers.{i}.attn.k_proj.weight"],
-                f"transformer_blocks.{i}.mha.w_v.weights": weights[f"layers.{i}.attn.v_proj.weight"],
+                f"transformer_blocks.{i}.mha.w_qkv.weights": qkv_weight,
                 f"transformer_blocks.{i}.mha.w_o.weights": weights[f"layers.{i}.attn.output_proj.weight"],
                 f"transformer_blocks.{i}.ff.w1.weights": weights[f"layers.{i}.ffn.w1.weight"],
                 f"transformer_blocks.{i}.ff.w2.weights": weights[f"layers.{i}.ffn.w2.weight"],
