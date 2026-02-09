@@ -5,6 +5,26 @@ from bpe_transformer.model.modules import Embedding, Linear, RMSNorm, RoPE, Tran
 
 
 class TransformerLM(nn.Module):
+    """Transformer language model.
+
+    Decoder-only transformer for autoregressive language modeling.
+
+    Args:
+        vocab_size: Size of the vocabulary.
+        context_length: Maximum sequence length.
+        num_layers: Number of transformer blocks.
+        d_model: Model dimensionality.
+        d_ff: Feedforward hidden dimension.
+        num_heads: Number of attention heads.
+        rope: Optional RoPE module for positional encoding.
+        device: Device for parameters. Defaults to None.
+        dtype: Data type for parameters. Defaults to None.
+
+    Shape:
+        - Input: (batch, seq_len) with token IDs
+        - Output: (batch, seq_len, vocab_size) with logits
+    """
+
     def __init__(
         self,
         vocab_size: int,
@@ -31,8 +51,14 @@ class TransformerLM(nn.Module):
         self.linear = Linear(in_features=d_model, out_features=vocab_size, device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
-        """
-        x contain text inputs
+        """Forward pass through the language model.
+
+        Args:
+            x: Input token IDs of shape (batch, seq_len).
+            token_positions: Position indices for RoPE.
+
+        Returns:
+            Logits of shape (batch, seq_len, vocab_size).
         """
         _, seq_len = x.shape
         if seq_len > self.context_length:

@@ -5,6 +5,23 @@ from bpe_transformer.model.modules import MultiHeadSelfAttention, RMSNorm, RoPE,
 
 
 class Transformer(nn.Module):
+    """Transformer block with pre-normalization.
+
+    Uses RMSNorm, multi-head self-attention, and SwiGLU feedforward.
+
+    Args:
+        d_model: Model dimensionality.
+        num_heads: Number of attention heads.
+        d_ff: Feedforward hidden dimension.
+        device: Device for parameters. Defaults to None.
+        dtype: Data type for parameters. Defaults to None.
+        rope: Optional RoPE module for positional encoding.
+
+    Shape:
+        - Input: (batch, seq_len, d_model)
+        - Output: (batch, seq_len, d_model)
+    """
+
     def __init__(
         self,
         d_model: int,
@@ -26,8 +43,14 @@ class Transformer(nn.Module):
         self.dtype = dtype
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
-        """
-        x: input tensor (batch, seq_len, d_model)
+        """Apply transformer block.
+
+        Args:
+            x: Input tensor of shape (batch, seq_len, d_model).
+            token_positions: Position indices for RoPE.
+
+        Returns:
+            Output tensor of shape (batch, seq_len, d_model).
         """
         # 1. Norm
         pre_norm1 = self.rms_norm1(x)

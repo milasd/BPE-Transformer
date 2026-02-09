@@ -4,6 +4,32 @@ from torch import nn
 
 
 class Embedding(nn.Module):
+    """Token embedding layer for transformer models.
+
+    Maps discrete token IDs to continuous vector representations. Uses truncated
+    normal initialization for stable training.
+
+    Args:
+        vocab_size: Size of the vocabulary (number of unique tokens).
+        d_model: Dimensionality of the embedding vectors.
+        device: Device to place the parameters on. Defaults to None (CPU).
+        dtype: Data type of the parameters. Defaults to None (default dtype).
+
+    Attributes:
+        embeddings: Learnable embedding matrix of shape (vocab_size, d_model).
+
+    Shape:
+        - Input: (..., sequence_length) with token IDs in range [0, vocab_size).
+        - Output: (..., sequence_length, d_model).
+
+    Examples:
+        >>> embedding = Embedding(vocab_size=50000, d_model=768)
+        >>> token_ids = torch.tensor([[1, 2, 3], [4, 5, 6]])
+        >>> embedded = embedding(token_ids)
+        >>> embedded.shape
+        torch.Size([2, 3, 768])
+    """
+
     def __init__(self, vocab_size: int, d_model: int, device=None, dtype=None):
         super().__init__()
 
@@ -14,11 +40,12 @@ class Embedding(nn.Module):
         )
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            token_ids: (batch_size, sequence_length)
+        """Look up embeddings for the given token IDs.
 
-        Return:
-           (batch_size, sequence_length, d_model)
+        Args:
+            token_ids: Integer tensor of shape (..., sequence_length) with token IDs.
+
+        Returns:
+            Embedding tensor of shape (..., sequence_length, d_model).
         """
         return self.embeddings[token_ids]

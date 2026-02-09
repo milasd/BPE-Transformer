@@ -6,6 +6,20 @@ from bpe_transformer.model.modules import RoPE, scaled_dot_product_attention, Li
 
 
 class MultiHeadSelfAttention(nn.Module):
+    """Multi-head self-attention with optional RoPE.
+
+    Args:
+        d_model: Model dimensionality.
+        num_heads: Number of attention heads.
+        device: Device for parameters. Defaults to None.
+        dtype: Data type for parameters. Defaults to None.
+        rope: Optional RoPE module for positional encoding.
+
+    Shape:
+        - Input: (..., seq_len, d_model)
+        - Output: (..., seq_len, d_model)
+    """
+
     def __init__(
         self,
         d_model: int,
@@ -29,12 +43,16 @@ class MultiHeadSelfAttention(nn.Module):
         self.w_o = Linear(d_model, d_model, device, dtype)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None, token_positions: torch.Tensor | None = None):
-        """
+        """Apply multi-head self-attention.
+
         Args:
-            x: Input tensor of shape [..., seq_len, d_model]
-            mask: Optional attention mask. If provided, should be shape [..., seq_len, seq_len]
-                  where True means "can attend" and False means "cannot attend"
-                  If None, creates a causal mask to prevent attending to future tokens
+            x: Input tensor of shape (..., seq_len, d_model).
+            mask: Optional attention mask of shape (..., seq_len, seq_len).
+                  True = attend, False = mask. Defaults to causal mask.
+            token_positions: Position indices for RoPE of shape (..., seq_len).
+
+        Returns:
+            Output tensor of shape (..., seq_len, d_model).
         """
         if self.rope and token_positions is None:
             raise ValueError("Must pass token_positions if RoPE embeddings are to be applied.")
