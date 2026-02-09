@@ -1,7 +1,7 @@
 from math import sqrt
 import torch
 
-from bpe_transformer.model.modules.softmax import softmax
+from bpe_transformer.model.modules import softmax
 
 
 def scaled_dot_product_attention(

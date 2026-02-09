@@ -10,17 +10,19 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 from bpe_transformer import train_bpe
-from bpe_transformer.model.modules.scaled_dot_product_attention import scaled_dot_product_attention
-from bpe_transformer.model.modules.multihead_self_attention import MultiHeadSelfAttention
-from bpe_transformer.model.modules.softmax import softmax
-from bpe_transformer.model.modules.embedding import Embedding
-from bpe_transformer.model.modules.rms_norm import RMSNorm
-from bpe_transformer.model.modules.rope import RoPE
-from bpe_transformer.model.modules.swiglu import SwiGLU
-from bpe_transformer.model.transformer_block import Transformer
-from bpe_transformer.model.transformer_lm import TransformerLM
+from bpe_transformer.model import TransformerLM
+from bpe_transformer.model.modules import (
+    scaled_dot_product_attention,
+    MultiHeadSelfAttention,
+    softmax,
+    Embedding,
+    RMSNorm,
+    RoPE,
+    SwiGLU,
+    Transformer,
+    Linear,
+)
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
-from bpe_transformer.model.modules.linear import Linear
 
 
 def run_linear(

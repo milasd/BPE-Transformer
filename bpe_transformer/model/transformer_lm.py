@@ -1,11 +1,7 @@
 from torch import nn
 import torch
 
-from bpe_transformer.model.modules.embedding import Embedding
-from bpe_transformer.model.modules.linear import Linear
-from bpe_transformer.model.modules.rms_norm import RMSNorm
-from bpe_transformer.model.modules.rope import RoPE
-from bpe_transformer.model.transformer_block import Transformer
+from bpe_transformer.model.modules import Embedding, Linear, RMSNorm, RoPE, Transformer
 
 
 class TransformerLM(nn.Module):
