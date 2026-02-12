@@ -63,9 +63,7 @@ class AdamW(optim.Optimizer):
             bias_correction2 = [1 - beta2**t for t in t_list]
 
             m_hat_list = torch._foreach_div(m_list, bias_correction1)
-            v_hat_list = torch._foreach_sqrt(
-                torch._foreach_div(v_list, bias_correction2)
-            )
+            v_hat_list = torch._foreach_sqrt(torch._foreach_div(v_list, bias_correction2))
 
             # denom: sqrt(v_hat) + eps
             torch._foreach_add_(v_hat_list, eps)

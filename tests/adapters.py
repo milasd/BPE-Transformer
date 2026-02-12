@@ -24,6 +24,7 @@ from bpe_transformer.model.modules import (
 )
 from bpe_transformer.optimizer.adamw import AdamW
 from bpe_transformer.optimizer.loss_function.cross_entropy import cross_entropy_loss
+from bpe_transformer.optimizer.utils.learning_rate_schedule import lr_cosine_schedule
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 
 
@@ -633,7 +634,9 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return lr_cosine_schedule(
+        t=it, lr_max=max_learning_rate, lr_min=min_learning_rate, t_warmup=warmup_iters, t_cosine=cosine_cycle_iters
+    )
 
 
 def run_save_checkpoint(
