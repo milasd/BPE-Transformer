@@ -27,6 +27,7 @@ from bpe_transformer.optimizer.loss_function.cross_entropy import cross_entropy_
 from bpe_transformer.optimizer.utils import gradient_clipping
 from bpe_transformer.optimizer.utils.learning_rate_schedule import lr_cosine_schedule
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
+from bpe_transformer.training.data_loader import data_loader
 
 
 def run_linear(
@@ -554,7 +555,8 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    batch = data_loader(x=dataset, batch_size=batch_size, context_length=context_length, device=device)
+    return batch
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
