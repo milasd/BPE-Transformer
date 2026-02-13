@@ -24,10 +24,10 @@ from bpe_transformer.model.modules import (
 )
 from bpe_transformer.optimizer.adamw import AdamW
 from bpe_transformer.optimizer.loss_function.cross_entropy import cross_entropy_loss
-from bpe_transformer.optimizer.utils import gradient_clipping
-from bpe_transformer.optimizer.utils.learning_rate_schedule import lr_cosine_schedule
+from bpe_transformer.optimizer.utils import gradient_clipping, lr_cosine_schedule
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 from bpe_transformer.training.data_loader import data_loader
+from bpe_transformer.training.utils import load_checkpoint, save_checkpoint
 
 
 def run_linear(
@@ -376,7 +376,7 @@ def run_transformer_lm(
     weights: dict[str, Tensor],
     in_indices: Int[Tensor, " batch_size sequence_length"],
 ) -> Float[Tensor, " batch_size sequence_length vocab_size"]:
-    """Given the weights of a Transformer language model and input indices,
+    r"""Given the weights of a Transformer language model and input indices,
     return the output of running a forward pass on the input indices.
 
     This function should use RoPE.
@@ -658,7 +658,7 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    return save_checkpoint(model=model, optimizer=optimizer, iteration=iteration, out=out)
 
 
 def run_load_checkpoint(
@@ -679,7 +679,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return load_checkpoint(src=src, model=model, optimizer=optimizer)
 
 
 def get_tokenizer(
