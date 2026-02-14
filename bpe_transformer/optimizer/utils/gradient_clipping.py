@@ -3,6 +3,7 @@ import torch
 from collections.abc import Iterable
 
 
+@torch.no_grad()
 def gradient_clipping(params: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
     """Clip gradients to have L2 norm at most max_l2_norm.
 

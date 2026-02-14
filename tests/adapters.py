@@ -27,7 +27,7 @@ from bpe_transformer.optimizer.loss_function.cross_entropy import cross_entropy_
 from bpe_transformer.optimizer.utils import gradient_clipping, lr_cosine_schedule
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 from bpe_transformer.training.data_loader import data_loader
-from bpe_transformer.training.utils import load_checkpoint, save_checkpoint
+from bpe_transformer.training.utils.checkpoint import load_checkpoint, save_checkpoint
 
 
 def run_linear(
