@@ -26,7 +26,7 @@ def preprocess_dataset(
     tokenizer: BPETokenizer,
     input_file: str | Path,
     output_file: str | Path,
-    n_workers: int = 8,
+    n_workers: int | None = None,
 ) -> None:
     """Tokenize a text file and save as numpy array.
 
@@ -34,9 +34,14 @@ def preprocess_dataset(
         tokenizer: BPE tokenizer instance
         input_file: Path to input text file
         output_file: Path to output .npy file
-        n_workers: Number of parallel workers for encoding
+        n_workers: Number of parallel workers for encoding (None = auto-detect)
     """
+    # Auto-detect workers if not specified
+    if n_workers is None:
+        n_workers = os.cpu_count() or 8
+
     logger.info(f"Processing {input_file}...")
+    logger.info(f"Using {n_workers} workers")
 
     # Get file size for progress tracking
     file_size = os.path.getsize(input_file)
@@ -74,7 +79,7 @@ def main(
     train_output_path: str | Path,
     val_output_path: str | Path,
     special_tokens: list[str] | None = None,
-    n_workers: int = 8,
+    n_workers: int | None = None,
 ) -> None:
     """Main preprocessing function.
 
@@ -86,7 +91,7 @@ def main(
         train_output_path: Path to save training tokens .npy
         val_output_path: Path to save validation tokens .npy
         special_tokens: Optional list of special tokens
-        n_workers: Number of parallel workers for encoding
+        n_workers: Number of parallel workers for encoding (None = auto-detect)
     """
     # Load tokenizer
     logger.info("Loading tokenizer...")
@@ -140,12 +145,9 @@ if __name__ == "__main__":
     train_output_path = data_dir / "train_tokens.npy"
     val_output_path = data_dir / "val_tokens.npy"
 
-    # Special tokens
     special_tokens = ["<|endoftext|>"]
-    # Number of parallel workers
     n_workers = 8
 
-    # Run preprocessing
     main(
         vocab_path=vocab_path,
         merges_path=merges_path,
