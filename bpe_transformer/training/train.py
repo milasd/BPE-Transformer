@@ -2,7 +2,9 @@
 
 import logging
 import os
+import random
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,11 +40,63 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
 
 
+def set_seed(seed: int) -> None:
+    """Set random seed for reproducibility.
+
+    Args:
+        seed: Random seed value
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # For deterministic behavior (may reduce performance)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    logger.info(f"Random seed set to {seed}")
+
+
 def load_config(config_path: str | Path) -> dict[str, Any]:
     """Load training configuration from YAML file."""
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     return config
+
+
+def create_run_directory(base_dir: str | Path, config: dict[str, Any]) -> Path:
+    """Create a unique directory for this training run.
+
+    Args:
+        base_dir: Base directory for all checkpoints
+        config: Training configuration
+
+    Returns:
+        Path to the unique run directory
+    """
+    # Create timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Create descriptive name with key hyperparameters
+    lr = config.get("learning_rate_max", 0)
+    bs = config.get("batch_size", 0)
+    iters = config.get("num_iterations", 0)
+    run_name = f"run_{timestamp}_lr{lr}_bs{bs}_iters{iters}"
+
+    # Create directory
+    run_dir = Path(base_dir) / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save config to run directory
+    config_save_path = run_dir / "config.yaml"
+    with open(config_save_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    logger.info(f"Created run directory: {run_dir}")
+    logger.info(f"Saved config to: {config_save_path}")
+
+    return run_dir
 
 
 def init_model(config: dict[str, Any], device: str) -> nn.Module:
@@ -220,7 +274,7 @@ def train(
     val_data: np.ndarray,
     config: dict[str, Any],
     device: str,
-    checkpoint_dir: str | Path = "checkpoints",
+    run_dir: str | Path,
     start_iteration: int = 0,
     use_wandb: bool = True,
 ) -> None:
@@ -233,7 +287,7 @@ def train(
         val_data: Tokenized validation data as numpy array
         config: Configuration dictionary
         device: Device to train on ('cuda', 'mps', or 'cpu')
-        checkpoint_dir: Directory to save checkpoints
+        run_dir: Directory for this specific training run (checkpoints will be saved here)
         start_iteration: Iteration to start/resume training from
         use_wandb: Whether to use Weights & Biases for logging
     """
@@ -249,9 +303,6 @@ def train(
     checkpoint_interval = config["checkpoint_interval"]
     val_interval = config["val_interval"]
     log_interval = config["log_interval"]
-
-    # Create checkpoint directory
-    os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Initialize Weights & Biases if available and requested
     if use_wandb and WANDB_AVAILABLE:
@@ -372,7 +423,7 @@ def train(
 
         # Save checkpoint
         if (iteration + 1) % checkpoint_interval == 0:
-            checkpoint_path = Path(checkpoint_dir) / f"checkpoint_iter_{iteration + 1}.pt"
+            checkpoint_path = Path(run_dir) / f"checkpoint_iter_{iteration + 1}.pt"
             save_checkpoint(model, optimizer, iteration + 1, checkpoint_path)
             logger.info(f"Saved checkpoint: {checkpoint_path}")
 
@@ -380,7 +431,7 @@ def train(
     pbar.close()
 
     # Save final checkpoint
-    final_checkpoint_path = Path(checkpoint_dir) / "checkpoint_final.pt"
+    final_checkpoint_path = Path(run_dir) / "checkpoint_final.pt"
     save_checkpoint(model, optimizer, num_iterations, final_checkpoint_path)
     logger.info(f"Training complete! Final checkpoint saved: {final_checkpoint_path}")
 
@@ -397,7 +448,7 @@ if __name__ == "__main__":
     config_path = "bpe_transformer/config/TinyStories_17M.yaml"
     data_path = "data/tokenizers/bpe_tinystories/train_tokens.npy"
     val_data_path = "data/tokenizers/bpe_tinystories/val_tokens.npy"
-    device = "mps"  # Change to "cuda" if using NVIDIA GPU, or "cpu" for CPU
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     checkpoint_dir = "checkpoints"
     resume_from = None  # Set to checkpoint path to resume training
 
@@ -408,10 +459,17 @@ if __name__ == "__main__":
     # Load configuration
     config = load_config(config_path)
 
+    # Set random seed if specified
+    if "seed" in config:
+        set_seed(config["seed"])
+
     # Add experiment metadata to config
     if experiment_name:
         config["experiment_name"] = experiment_name
     config["wandb_project"] = "bpe-transformer"
+
+    # Create unique run directory
+    run_dir = create_run_directory(checkpoint_dir, config)
 
     # Setup training components
     model, optimizer, training_data, val_data, start_iteration = setup_training(
@@ -430,7 +488,7 @@ if __name__ == "__main__":
         val_data=val_data,
         config=config,
         device=device,
-        checkpoint_dir=checkpoint_dir,
+        run_dir=run_dir,
         start_iteration=start_iteration,
         use_wandb=use_wandb,
     )

@@ -15,8 +15,8 @@ seed: 42
 # Training hyperparameters
 batch_size: 32
 num_iterations: 5000
-learning_rate_max: 0.001
-learning_rate_min: 0.00001
+learning_rate_max: 0.002
+learning_rate_min: 0.00085
 warmup_iterations: 500
 grad_clip_norm: 1.0
 
