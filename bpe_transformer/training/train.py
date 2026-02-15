@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,15 @@ import numpy as np
 import torch
 import yaml
 from torch import nn
+from tqdm import tqdm
+
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+    import os
+    os.environ['WANDB_API_KEY'] = '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'
+except ImportError:
+    WANDB_AVAILABLE = False
 
 from bpe_transformer.model.modules import RoPE
 from bpe_transformer.model import TransformerLM
@@ -37,7 +47,7 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
 
 def init_model(config: dict[str, Any], device: str) -> nn.Module:
     """Initialize the transformer language model."""
-    rope = RoPE(theta=config.get("theta", 10000))
+    rope = RoPE(theta=config["theta"], d_k=config["d_model"] // config["num_heads"], max_seq_len=config["context_length"], device=device)
 
     model = TransformerLM(
         vocab_size=config["vocab_size"],
@@ -55,9 +65,9 @@ def init_model(config: dict[str, Any], device: str) -> nn.Module:
 
 def init_optimizer(model: nn.Module, config: dict[str, Any]) -> torch.optim.Optimizer:
     """Initialize the optimizer."""
-    learning_rate_max = config.get("learning_rate_max", 3e-4)
-    weight_decay = config.get("weight_decay", 0.1)
-    betas = tuple(config.get("betas", [0.9, 0.95]))
+    learning_rate_max = config["learning_rate_max"]
+    weight_decay = config["weight_decay"]
+    betas = tuple(config["betas"])
 
     optimizer = AdamW(
         params=model.parameters(),
@@ -69,30 +79,73 @@ def init_optimizer(model: nn.Module, config: dict[str, Any]) -> torch.optim.Opti
     return optimizer
 
 
+def load_data(data_path: str | Path, val_data_path: str | Path, vocab_size: int) -> tuple[np.ndarray, np.ndarray]:
+    """Load training and validation data using memory-mapped files.
+
+    Uses memory-mapped mode to lazily load data on-demand, avoiding loading
+    the entire dataset into RAM. This is essential for large datasets.
+
+    Args:
+        data_path: Path to training data (tokenized numpy array)
+        val_data_path: Path to validation data (tokenized numpy array)
+        vocab_size: Vocabulary size for validation
+
+    Returns:
+        Tuple of (training_data, val_data) as memory-mapped arrays
+    """
+    # Load training data with memory mapping
+    logger.info(f"Loading training data from {data_path} (memory-mapped)")
+    training_data = np.load(data_path, mmap_mode='r')
+    logger.info(f"Training data shape: {training_data.shape}")
+
+    # Verify training data integrity
+    if training_data.max() >= vocab_size:
+        raise ValueError(f"Training data contains token {training_data.max()} >= vocab_size {vocab_size}")
+    if training_data.min() < 0:
+        raise ValueError(f"Training data contains negative token {training_data.min()}")
+    logger.info(f"Training data token range: [{training_data.min()}, {training_data.max()}]")
+
+    # Load validation data with memory mapping
+    logger.info(f"Loading validation data from {val_data_path} (memory-mapped)")
+    val_data = np.load(val_data_path, mmap_mode='r')
+    logger.info(f"Validation data shape: {val_data.shape}")
+
+    # Verify validation data integrity
+    if val_data.max() >= vocab_size:
+        raise ValueError(f"Validation data contains token {val_data.max()} >= vocab_size {vocab_size}")
+    if val_data.min() < 0:
+        raise ValueError(f"Validation data contains negative token {val_data.min()}")
+    logger.info(f"Validation data token range: [{val_data.min()}, {val_data.max()}]")
+
+    return training_data, val_data
+
+
 def setup_training(
+    config: dict[str, Any],
     data_path: str | Path,
+    val_data_path: str | Path,
     device: str,
     resume_from: str | Path | None = None,
-) -> tuple[nn.Module, torch.optim.Optimizer, np.ndarray, dict[str, Any], int]:
+) -> tuple[nn.Module, torch.optim.Optimizer, np.ndarray, np.ndarray, int]:
     """Setup all components needed for training.
 
     Args:
-        config_path: Path to YAML configuration file
+        config: Configuration dictionary
         data_path: Path to training data (tokenized numpy array)
+        val_data_path: Path to validation data (tokenized numpy array)
         device: Device to train on ('cuda', 'mps', or 'cpu')
         resume_from: Optional path to checkpoint to resume training from
 
     Returns:
-        Tuple of (model, optimizer, training_data, config, start_iteration)
+        Tuple of (model, optimizer, training_data, val_data, start_iteration)
     """
-    # Load training data
-    logger.info(f"Loading training data from {data_path}")
-    training_data = np.load(data_path)
-    logger.info(f"Training data shape: {training_data.shape}")
+    # Load data
+    training_data, val_data = load_data(data_path, val_data_path, config["vocab_size"])
 
     # Initialize model
     logger.info("Initializing model...")
     model = init_model(config, device)
+    model = torch.compile(model, backend="aot_eager")
     model.to(device)
 
     # Count parameters
@@ -109,17 +162,67 @@ def setup_training(
         start_iteration = load_checkpoint(resume_from, model, optimizer)
         logger.info(f"Resumed from iteration {start_iteration}")
 
-    return model, optimizer, training_data, start_iteration
+    return model, optimizer, training_data, val_data, start_iteration
+
+
+def validate(
+    model: nn.Module,
+    val_data: np.ndarray,
+    config: dict[str, Any],
+    device: str,
+    num_batches: int = 50,
+) -> float:
+    """Run validation and return average loss.
+
+    Args:
+        model: Model to validate
+        val_data: Validation data
+        config: Configuration dictionary
+        device: Device to run validation on
+        num_batches: Number of batches to validate on
+
+    Returns:
+        Average validation loss
+    """
+    model.eval()
+    total_loss = 0.0
+    batch_size = config["batch_size"]
+    context_length = config["context_length"]
+
+    with torch.no_grad():
+        for _ in range(num_batches):
+            # Load batch
+            inputs, labels = data_loader(
+                x=val_data,
+                batch_size=batch_size,
+                context_length=context_length,
+                device=device,
+            )
+
+            # Create position indices for RoPE
+            token_positions = torch.arange(context_length, device=device).unsqueeze(0).expand(batch_size, -1)
+
+            # Forward pass
+            logits = model(inputs, token_positions=token_positions)
+
+            # Compute loss
+            loss = cross_entropy_loss(logits, labels)
+            total_loss += loss.item()
+
+    model.train()
+    return total_loss / num_batches
 
 
 def train(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
     training_data: np.ndarray,
+    val_data: np.ndarray,
     config: dict[str, Any],
     device: str,
     checkpoint_dir: str | Path = "checkpoints",
     start_iteration: int = 0,
+    use_wandb: bool = True,
 ) -> None:
     """Main training loop for the transformer language model.
 
@@ -127,25 +230,41 @@ def train(
         model: Initialized transformer model
         optimizer: Initialized optimizer
         training_data: Tokenized training data as numpy array
+        val_data: Tokenized validation data as numpy array
         config: Configuration dictionary
         device: Device to train on ('cuda', 'mps', or 'cpu')
         checkpoint_dir: Directory to save checkpoints
         start_iteration: Iteration to start/resume training from
+        use_wandb: Whether to use Weights & Biases for logging
     """
-    # Training hyperparameters (with sensible defaults)
-    batch_size = config.get("batch_size", 32)
-    num_iterations = config.get("num_iterations", 10000)
-    learning_rate_max = config.get("learning_rate_max", 3e-4)
-    learning_rate_min = config.get("learning_rate_min", 3e-5)
-    warmup_iterations = config.get("warmup_iterations", 1000)
-    grad_clip_norm = config.get("grad_clip_norm", 1.0)
+    # Training hyperparameters
+    batch_size = config["batch_size"]
+    num_iterations = config["num_iterations"]
+    learning_rate_max = config["learning_rate_max"]
+    learning_rate_min = config["learning_rate_min"]
+    warmup_iterations = config["warmup_iterations"]
+    grad_clip_norm = config["grad_clip_norm"]
 
-    # Checkpointing and logging
-    checkpoint_interval = config.get("checkpoint_interval", 1000)
-    log_interval = config.get("log_interval", 100)
+    # Checkpointing, validation, and logging
+    checkpoint_interval = config["checkpoint_interval"]
+    val_interval = config["val_interval"]
+    log_interval = config["log_interval"]
 
     # Create checkpoint directory
     os.makedirs(checkpoint_dir, exist_ok=True)
+
+    # Initialize Weights & Biases if available and requested
+    if use_wandb and WANDB_AVAILABLE:
+        wandb.init(
+            project=config["wandb_project"],
+            name=config.get("experiment_name", None),
+            config=config,
+            resume="allow" if start_iteration > 0 else None,
+        )
+        # Log model architecture
+        wandb.watch(model, log="all", log_freq=log_interval)
+    elif use_wandb and not WANDB_AVAILABLE:
+        logger.warning("Weights & Biases not available. Install with: pip install wandb")
 
     # Set model to training mode
     model.train()
@@ -157,7 +276,14 @@ def train(
     logger.info(f"Context length: {config['context_length']}")
     logger.info("-" * 60)
 
-    for iteration in range(start_iteration, num_iterations):
+    # Track wallclock time
+    start_time = time.time()
+    iteration_start_time = start_time
+
+    # Create progress bar
+    pbar = tqdm(range(start_iteration, num_iterations), desc="Training", unit="iter")
+
+    for iteration in pbar:
         # Update learning rate
         lr = lr_cosine_schedule(
             t=iteration,
@@ -197,9 +323,52 @@ def train(
         # Optimizer step
         optimizer.step()
 
+        # Calculate timing metrics
+        current_time = time.time()
+        wallclock_time = current_time - start_time
+        iter_time = current_time - iteration_start_time
+        iteration_start_time = current_time
+
+        # Update progress bar
+        pbar.set_postfix({
+            'loss': f'{loss.item():.4f}',
+            'lr': f'{lr:.6f}',
+            'ms/iter': f'{iter_time*1000:.1f}'
+        })
+
         # Logging
         if (iteration + 1) % log_interval == 0:
-            logger.info(f"Iteration {iteration + 1:>6}/{num_iterations} | Loss: {loss.item():.4f} | LR: {lr:.6f}")
+            logger.info(
+                f"Iteration {iteration + 1:>6}/{num_iterations} | "
+                f"Loss: {loss.item():.4f} | LR: {lr:.6f} | "
+                f"Time: {wallclock_time:.2f}s | Iter: {iter_time*1000:.1f}ms"
+            )
+
+            # Log to wandb
+            if use_wandb and WANDB_AVAILABLE:
+                wandb.log({
+                    "train/loss": loss.item(),
+                    "train/learning_rate": lr,
+                    "train/iteration": iteration + 1,
+                    "train/wallclock_time": wallclock_time,
+                    "train/iter_time_ms": iter_time * 1000,
+                }, step=iteration + 1)
+
+        # Run validation
+        if (iteration + 1) % val_interval == 0:
+            val_loss = validate(model, val_data, config, device)
+            logger.info(
+                f"Iteration {iteration + 1:>6}/{num_iterations} | "
+                f"Validation Loss: {val_loss:.4f} | "
+                f"Time: {wallclock_time:.2f}s"
+            )
+
+            # Log to wandb
+            if use_wandb and WANDB_AVAILABLE:
+                wandb.log({
+                    "val/loss": val_loss,
+                    "val/wallclock_time": wallclock_time,
+                }, step=iteration + 1)
 
         # Save checkpoint
         if (iteration + 1) % checkpoint_interval == 0:
@@ -207,10 +376,17 @@ def train(
             save_checkpoint(model, optimizer, iteration + 1, checkpoint_path)
             logger.info(f"Saved checkpoint: {checkpoint_path}")
 
+    # Close progress bar
+    pbar.close()
+
     # Save final checkpoint
     final_checkpoint_path = Path(checkpoint_dir) / "checkpoint_final.pt"
     save_checkpoint(model, optimizer, num_iterations, final_checkpoint_path)
     logger.info(f"Training complete! Final checkpoint saved: {final_checkpoint_path}")
+
+    # Finish wandb run
+    if use_wandb and WANDB_AVAILABLE:
+        wandb.finish()
 
 
 if __name__ == "__main__":
@@ -219,18 +395,29 @@ if __name__ == "__main__":
 
     # Paths and device configuration
     config_path = "bpe_transformer/config/TinyStories_17M.yaml"
-    data_path = "data/training_data.npy"  # Update with your actual data path
+    data_path = "data/tokenizers/bpe_tinystories/train_tokens.npy"
+    val_data_path = "data/tokenizers/bpe_tinystories/val_tokens.npy"
     device = "mps"  # Change to "cuda" if using NVIDIA GPU, or "cpu" for CPU
     checkpoint_dir = "checkpoints"
     resume_from = None  # Set to checkpoint path to resume training
 
+    # Experiment tracking
+    use_wandb = True  # Set to False to disable Weights & Biases logging
+    experiment_name = None  # Set to a name for your experiment, or None for auto-generated
+
     # Load configuration
     config = load_config(config_path)
-    
+
+    # Add experiment metadata to config
+    if experiment_name:
+        config["experiment_name"] = experiment_name
+    config["wandb_project"] = "bpe-transformer"
+
     # Setup training components
-    model, optimizer, training_data, start_iteration = setup_training(
-        config_path=config_path,
+    model, optimizer, training_data, val_data, start_iteration = setup_training(
+        config=config,
         data_path=data_path,
+        val_data_path=val_data_path,
         device=device,
         resume_from=resume_from,
     )
@@ -240,8 +427,10 @@ if __name__ == "__main__":
         model=model,
         optimizer=optimizer,
         training_data=training_data,
+        val_data=val_data,
         config=config,
         device=device,
         checkpoint_dir=checkpoint_dir,
         start_iteration=start_iteration,
+        use_wandb=use_wandb,
     )

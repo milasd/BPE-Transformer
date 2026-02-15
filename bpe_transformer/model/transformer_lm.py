@@ -50,7 +50,7 @@ class TransformerLM(nn.Module):
         self.norm = RMSNorm(d_model=d_model, device=device, dtype=dtype)
         self.linear = Linear(in_features=d_model, out_features=vocab_size, device=device, dtype=dtype)
 
-    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
         """Forward pass through the language model.
 
         Args:

@@ -72,11 +72,18 @@ class RoPE(nn.Module):
         """
         # For each pair of elements (x1, x2) in each embedding,
         # 1. Rotated vector is: (x1, x2) * cos theta + (-x2, x1) * sin theta.
-        cos = self.cos_sin_cache[token_positions, :, self.COS_IDX]  # [..., d_k // 2]
-        sin = self.cos_sin_cache[token_positions, :, self.SIN_IDX]  # [..., d_k // 2]
+        cos = self.cos_sin_cache[token_positions, :, self.COS_IDX]  # [..., seq_len, d_k // 2]
+        sin = self.cos_sin_cache[token_positions, :, self.SIN_IDX]  # [..., seq_len, d_k // 2]
 
-        x1 = x[..., 0::2]  # i = 0, 2, 4... [, d_k // 2]
-        x2 = x[..., 1::2]  # i = 1, 3, 5... [, d_k // 2]
+        # If x has more dimensions than cos/sin (e.g., num_heads dimension),
+        # unsqueeze cos/sin to match for broadcasting
+        # x is (..., seq_len, d_k) or (..., num_heads, seq_len, d_k)
+        while cos.ndim < x.ndim:
+            cos = cos.unsqueeze(-3)  # Add dimension before seq_len
+            sin = sin.unsqueeze(-3)
+
+        x1 = x[..., 0::2]  # i = 0, 2, 4... [..., d_k // 2]
+        x2 = x[..., 1::2]  # i = 1, 3, 5... [..., d_k // 2]
 
         rotated_x1 = x1 * cos - x2 * sin
         rotated_x2 = x1 * sin + x2 * cos
