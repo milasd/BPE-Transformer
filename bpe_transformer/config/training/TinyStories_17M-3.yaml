@@ -17,7 +17,8 @@ batch_size: 32
 num_iterations: 43945
 learning_rate_max: 0.0006
 learning_rate_min: 0.00006
-warmup_iterations: 4150
+warmup_iterations: 4394
+# warmup_iterations: 470
 grad_clip_norm: 1.0
 use_mixed_precision: false
 

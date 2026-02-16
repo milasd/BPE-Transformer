@@ -34,7 +34,6 @@ class Linear(nn.Module):
         self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None
     ):
         super().__init__()
-        # Initialize weights using truncated normal with Xavier-style scaling
         sigma = (2 / (in_features + out_features)) ** 0.5
         self.weights = nn.Parameter(
             data=nn.init.trunc_normal_(

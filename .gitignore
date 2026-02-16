@@ -193,3 +193,4 @@ ckpt
 
 .vscode
 create_trainval_tokenizer.py
+nohup.out
