@@ -222,7 +222,7 @@ def setup_training(
     # Initialize model
     logger.info("Initializing model...")
     model = init_model(config, device)
-    model = torch.compile(model, backend="aot_eager") if device == "mps" else torch.compile(model)
+    model = torch.compile(model, backend="cudagraphs") if device == "cuda" else torch.compile(model, backend="aot_eager")
     model.to(device)
 
     # Count parameters
