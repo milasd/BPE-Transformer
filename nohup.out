@@ -1,0 +1,32 @@
+2026-02-15 23:26:04 | INFO | Random seed set to 42
+2026-02-15 23:26:04 | INFO | Created run directory: checkpoints/run_20260215_232604_lr0.0006_bs32_iters41500
+2026-02-15 23:26:04 | INFO | Saved config to: checkpoints/run_20260215_232604_lr0.0006_bs32_iters41500/config.yaml
+2026-02-15 23:26:04 | INFO | Loading training data from data/tokenizers/bpe_tinystories/train_tokens.npy (memory-mapped)
+2026-02-15 23:26:04 | INFO | Training data shape: (540799789,)
+2026-02-15 23:26:07 | INFO | Training data token range: [9, 9999]
+2026-02-15 23:26:07 | INFO | Loading validation data from data/tokenizers/bpe_tinystories/val_tokens.npy (memory-mapped)
+2026-02-15 23:26:07 | INFO | Validation data shape: (5461245,)
+2026-02-15 23:26:07 | INFO | Validation data token range: [10, 9999]
+2026-02-15 23:26:07 | INFO | Initializing model...
+2026-02-15 23:26:08 | INFO | Model parameters: 22,696,448
+2026-02-15 23:26:08 | INFO | Resuming from checkpoint: checkpoints/run_20260215_064641_lr0.003_bs32_iters415
+Traceback (most recent call last):
+  File "/Users/miladeoliveira/projects/BPE-transformer/bpe_transformer/training/train.py", line 499, in <module>
+    model, optimizer, training_data, val_data, start_iteration = setup_training(
+                                                                 ^^^^^^^^^^^^^^^
+  File "/Users/miladeoliveira/projects/BPE-transformer/bpe_transformer/training/train.py", line 217, in setup_training
+    start_iteration = load_checkpoint(resume_from, model, optimizer)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/miladeoliveira/projects/BPE-transformer/bpe_transformer/training/utils/checkpoint.py", line 24, in load_checkpoint
+    checkpoint = torch.load(src)
+                 ^^^^^^^^^^^^^^^
+  File "/Users/miladeoliveira/projects/BPE-transformer/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1425, in load
+    with _open_file_like(f, "rb") as opened_file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/miladeoliveira/projects/BPE-transformer/.venv/lib/python3.12/site-packages/torch/serialization.py", line 751, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/miladeoliveira/projects/BPE-transformer/.venv/lib/python3.12/site-packages/torch/serialization.py", line 732, in __init__
+    super().__init__(open(name, mode))
+                     ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'checkpoints/run_20260215_064641_lr0.003_bs32_iters415'

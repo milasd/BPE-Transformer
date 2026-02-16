@@ -113,16 +113,16 @@ def main(
         n_workers=n_workers,
     )
 
-    # # Process training data
-    # logger.info("\n" + "=" * 60)
-    # logger.info("Processing training data")
-    # logger.info("=" * 60)
-    # preprocess_dataset(
-    #     tokenizer=tokenizer,
-    #     input_file=train_text_path,
-    #     output_file=train_output_path,
-    #     n_workers=n_workers,
-    # )
+    # Process training data
+    logger.info("\n" + "=" * 60)
+    logger.info("Processing training data")
+    logger.info("=" * 60)
+    preprocess_dataset(
+        tokenizer=tokenizer,
+        input_file=train_text_path,
+        output_file=train_output_path,
+        n_workers=n_workers,
+    )
 
     logger.info("\n" + "=" * 60)
     logger.info("Preprocessing complete!")

@@ -1,5 +1,6 @@
 """Training script for BPE Transformer language model."""
 
+import argparse
 import logging
 import os
 import random
@@ -258,9 +259,8 @@ def validate(
 
             # Forward pass
             logits = model(inputs, token_positions=token_positions)
-
-            # Compute loss
             loss = cross_entropy_loss(logits, labels)
+
             total_loss += loss.item()
 
     model.train()
@@ -320,6 +320,9 @@ def train(
     # Set model to training mode
     model.train()
 
+    # Track best validation loss
+    best_val_loss = float('inf')
+
     # Training loop
     logger.info(f"Starting training for {num_iterations} iterations...")
     logger.info(f"Device: {device}")
@@ -360,18 +363,12 @@ def train(
 
         # Forward pass
         logits = model(inputs, token_positions=token_positions)
-
-        # Compute loss
         loss = cross_entropy_loss(logits, labels)
 
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
-
-        # Gradient clipping
         gradient_clipping(model.parameters(), max_l2_norm=grad_clip_norm)
-
-        # Optimizer step
         optimizer.step()
 
         # Calculate timing metrics
@@ -414,10 +411,18 @@ def train(
                 f"Time: {wallclock_time:.2f}s"
             )
 
+            # Check if this is the best validation loss
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_checkpoint_path = Path(run_dir) / "checkpoint_best.pt"
+                save_checkpoint(model, optimizer, iteration + 1, best_checkpoint_path)
+                logger.info(f"New best validation loss: {val_loss:.4f} - Saved checkpoint: {best_checkpoint_path}")
+
             # Log to wandb
             if use_wandb and WANDB_AVAILABLE:
                 wandb.log({
                     "val/loss": val_loss,
+                    "val/best_loss": best_val_loss,
                     "val/wallclock_time": wallclock_time,
                 }, step=iteration + 1)
 
@@ -434,6 +439,7 @@ def train(
     final_checkpoint_path = Path(run_dir) / "checkpoint_final.pt"
     save_checkpoint(model, optimizer, num_iterations, final_checkpoint_path)
     logger.info(f"Training complete! Final checkpoint saved: {final_checkpoint_path}")
+    logger.info(f"Best validation loss achieved: {best_val_loss:.4f}")
 
     # Finish wandb run
     if use_wandb and WANDB_AVAILABLE:
@@ -441,20 +447,38 @@ def train(
 
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Train BPE Transformer language model")
+    parser.add_argument("--config", type=str, default="bpe_transformer/config/TinyStories_17M-2.yaml",
+                        help="Path to YAML config file")
+    parser.add_argument("--data", type=str, default="data/tokenizers/bpe_tinystories/train_tokens.npy",
+                        help="Path to training data")
+    parser.add_argument("--val-data", type=str, default="data/tokenizers/bpe_tinystories/val_tokens.npy",
+                        help="Path to validation data")
+    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints",
+                        help="Directory to save checkpoints")
+    parser.add_argument("--resume-from", type=str, default=None,
+                        help="Path to checkpoint to resume training from")
+    parser.add_argument("--no-wandb", action="store_true",
+                        help="Disable Weights & Biases logging")
+    parser.add_argument("--experiment-name", type=str, default=None,
+                        help="Name for the experiment (for W&B)")
+    args = parser.parse_args()
+
     # Setup logging
     setup_logging(log_level="INFO")
 
     # Paths and device configuration
-    config_path = "bpe_transformer/config/TinyStories_17M.yaml"
-    data_path = "data/tokenizers/bpe_tinystories/train_tokens.npy"
-    val_data_path = "data/tokenizers/bpe_tinystories/val_tokens.npy"
+    config_path = args.config
+    data_path = args.data
+    val_data_path = args.val_data
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    checkpoint_dir = "checkpoints"
-    resume_from = None  # Set to checkpoint path to resume training
+    checkpoint_dir = args.checkpoint_dir
+    resume_from = args.resume_from
 
     # Experiment tracking
-    use_wandb = True  # Set to False to disable Weights & Biases logging
-    experiment_name = None  # Set to a name for your experiment, or None for auto-generated
+    use_wandb = not args.no_wandb
+    experiment_name = args.experiment_name
 
     # Load configuration
     config = load_config(config_path)

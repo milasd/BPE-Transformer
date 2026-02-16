@@ -1,0 +1,15 @@
+# BPE Tokenizer: TinyStories
+
+vocab_size: 10000
+
+# Special tokens
+eos_token: '<|endoftext|>'
+special_tokens:
+  - '<|endoftext|>'
+
+# End of Sentence Token ID
+eos_token_id: 256
+
+# Path to vocab and merges files of trained bpe
+vocab_filepath: data/tokenizers/bpe_tinystories/vocab.pkl
+merges_filepath: data/tokenizers/bpe_tinystories/merges.pkl

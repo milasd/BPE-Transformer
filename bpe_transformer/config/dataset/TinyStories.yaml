@@ -1,0 +1,4 @@
+# Path to TinyStories train/data files 
+
+train_data: data/TinyStoriesV2-GPT4-train.txt
+val_data: data/TinyStoriesV2-GPT4-valid.txt

@@ -1,0 +1,4 @@
+# Path to OpenWebText train/data files 
+
+train_data: data/owt_train.txt
+val_data: data/owt_valid.txt
