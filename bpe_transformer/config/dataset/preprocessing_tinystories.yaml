@@ -1,0 +1,21 @@
+# Data Preprocessing Configuration for TinyStories
+
+# Tokenizer files
+vocab_filepath: data/tokenizers/bpe_tinystories/vocab.pkl
+merges_filepath: data/tokenizers/bpe_tinystories/merges.pkl
+
+# Input data paths
+train_text_path: data/TinyStoriesV2-GPT4-train.txt
+val_text_path: data/TinyStoriesV2-GPT4-valid.txt
+
+# Output paths
+train_output_path: data/tokenizers/bpe_tinystories/train_tokens.npy
+val_output_path: data/tokenizers/bpe_tinystories/val_tokens.npy
+
+# Special tokens
+special_tokens:
+  - '<|endoftext|>'
+
+# Processing settings
+n_workers: 8
+dtype: int32

@@ -13,14 +13,12 @@ def data_loader(x: np.ndarray, batch_size: int, context_length: int, device: str
     max_start = len(x) - context_length
     starts = np.random.randint(0, max_start, size=batch_size)
 
-    inputs = torch.stack([
-        torch.from_numpy(x[start : start + context_length].astype(np.int64)) 
-        for start in starts
-    ]).to(device)
+    inputs = torch.stack([torch.from_numpy(x[start : start + context_length].astype(np.int64)) for start in starts]).to(
+        device
+    )
 
-    labels = torch.stack([
-        torch.from_numpy(x[start + 1 : start + context_length + 1].astype(np.int64)) 
-        for start in starts
-    ]).to(device)
+    labels = torch.stack(
+        [torch.from_numpy(x[start + 1 : start + context_length + 1].astype(np.int64)) for start in starts]
+    ).to(device)
 
     return inputs, labels

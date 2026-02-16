@@ -424,8 +424,7 @@ class BPETokenizer(Tokenizer):
             yield from self.encode(buffer)
 
     def encode_iterable_to_npy(
-        self, iterable: Iterable[str], output_path: Path, n_workers: int | None = None,
-        dtype: np.dtype = np.int32
+        self, iterable: Iterable[str], output_path: Path, n_workers: int | None = None, dtype: np.dtype = np.int32
     ) -> None:
         """
         Encode an iterable of text and save as a .npy file using memory-efficient streaming.
@@ -447,30 +446,30 @@ class BPETokenizer(Tokenizer):
         import struct
 
         # temporary binary file to write tokens incrementally
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.bin')
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".bin")
         temp_path = Path(temp_file.name)
 
         try:
             # Determine format string for struct based on dtype
             if dtype == np.int32:
-                fmt = '<i'  # little-endian 32-bit signed int
+                fmt = "<i"  # little-endian 32-bit signed int
             elif dtype == np.int64:
-                fmt = '<q'  # little-endian 64-bit signed int
+                fmt = "<q"  # little-endian 64-bit signed int
             elif dtype == np.uint32:
-                fmt = '<I'  # little-endian 32-bit unsigned int
+                fmt = "<I"  # little-endian 32-bit unsigned int
             else:
-                fmt = '<q'  # default to int64
+                fmt = "<q"  # default to int64
 
             total_tokens = 0
 
             # Write tokens to binary file as we generate them
-            with open(temp_path, 'wb') as f:
+            with open(temp_path, "wb") as f:
                 for token_id in self.encode_iterable(iterable, n_workers=n_workers):
                     f.write(struct.pack(fmt, token_id))
                     total_tokens += 1
 
             # Memory-map the binary file and save as .npy
-            token_array = np.memmap(temp_path, dtype=dtype, mode='r', shape=(total_tokens,))
+            token_array = np.memmap(temp_path, dtype=dtype, mode="r", shape=(total_tokens,))
             np.save(output_path, token_array)
 
             # Clean up memmap reference!

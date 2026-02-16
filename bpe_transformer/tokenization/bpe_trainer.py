@@ -3,6 +3,7 @@ import heapq
 from collections import Counter
 from pathlib import Path
 from collections.abc import Iterable
+from tqdm import tqdm
 from bpe_transformer.settings import DEFAULT_OUTPUT_DIR
 from bpe_transformer.tokenization.preprocessing import parallel_pretokenization
 
@@ -239,6 +240,8 @@ class BPETrainer:
                 "Warning: self._vocab_pairs_heap was not initialized. No pairs to start merging process."
             )
 
+        pbar = tqdm(total=self._vocab_size - self._initial_vocab_size, desc="Training BPE", unit="merges")
+
         while len(self.vocab) < self._vocab_size and len(self._vocab_pairs_heap) > 0:
             item = heapq.heappop(self._vocab_pairs_heap)
             pair = item.pair
@@ -314,6 +317,7 @@ class BPETrainer:
                 merged_bytes = self._vocab[pair[0]] + self._vocab[pair[1]]
                 self.add_new_vocab(id=new_id, new_value=merged_bytes)
                 new_id += 1
+                pbar.update(1)
 
                 # Push all the new adjacency pairs and decreased adjacency pairs for pre-merge
                 [
@@ -323,6 +327,8 @@ class BPETrainer:
                     for p in updated_pairs
                     if self._vocab_pairs_counter[p] > 0
                 ]
+
+        pbar.close()
 
     def _get_adjacency_pairs(self, token: list[int], positions: list[int]) -> Iterable:
         """

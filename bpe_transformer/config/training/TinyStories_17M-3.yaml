@@ -14,7 +14,7 @@ seed: 42
 
 # Training hyperparameters
 batch_size: 32
-num_iterations: 41500
+num_iterations: 43945
 learning_rate_max: 0.0006
 learning_rate_min: 0.00006
 warmup_iterations: 4150

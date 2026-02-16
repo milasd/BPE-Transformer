@@ -87,40 +87,49 @@ class TransformerLM(nn.Module):
 
         return logits
 
-
     @torch.no_grad()
-    def generate(self, x: torch.Tensor, eos_token_id: int, max_tokens: int, p: float,  top_k: int | None = None, temperature: int | None = None) -> torch.Tensor:
+    def generate(
+        self,
+        x: torch.Tensor,
+        eos_token_id: int,
+        max_tokens: int,
+        p: float,
+        top_k: int | None = None,
+        temperature: int | None = None,
+    ) -> torch.Tensor:
         """Predict next token given a sequence of tokens t until we reach end of token.
         input: sequence of tokens x0,...,xt
         predict xt+1
         add xt+1 to input
-        loop: input sequence of tokens x0, ..., xt+1. predict xt+2. seq_len+1, 
+        loop: input sequence of tokens x0, ..., xt+1. predict xt+2. seq_len+1,
         end loop when xt+n == end of sequence token.
         """
         # unsqueeze if tensor is 1 dim only (seq_len,) -> (1, seq_len)
         if x.dim() == 1:
-            x = rearrange(x, 'n_tokens -> 1 n_tokens')
-        
+            x = rearrange(x, "n_tokens -> 1 n_tokens")
+
         # Keep original seq. len to retrieve generated tokens later
         original_seq_len = x.shape[-1]
-        
+
         n_tokens: int = 0
         predicted_token = -1
         while n_tokens <= max_tokens:
             # If seq_len > context_length, get only past n=context_length tokens.
             if x.size(1) > self.context_length:
                 x = x[:, -self.context_length :]
-            
+
             # 1. predict next token logits
             batch_size, seq_len = x.shape
-            token_positions = repeat(torch.arange(seq_len, device=x.device), 'seq_len -> batch seq_len', batch=batch_size)
-            
-            logits = self.forward(x, token_positions=token_positions)[:, -1, :] # get last logit only for prediciton 
-            
-            # if temperature is provided, scale 
-            if temperature is not None and temperature > 0: 
+            token_positions = repeat(
+                torch.arange(seq_len, device=x.device), "seq_len -> batch seq_len", batch=batch_size
+            )
+
+            logits = self.forward(x, token_positions=token_positions)[:, -1, :]  # get last logit only for prediciton
+
+            # if temperature is provided, scale
+            if temperature is not None and temperature > 0:
                 logits = logits / temperature
-                
+
             # if top_k is required, apply
             if top_k:
                 # get top k values
@@ -129,38 +138,38 @@ class TransformerLM(nn.Module):
                 min_k = top_k_values[:, -1].unsqueeze(-1)
                 mask = logits >= min_k
                 # change non-top k values to -inf for softmax.
-                logits[~mask] = float('-inf')
-                
+                logits[~mask] = float("-inf")
+
             # apply softmax
             logits_prob = softmax(x=logits, i=-1)
-            
+
             # Nucleus/Top-p logits.
             sorted_probs, sorted_indices = torch.sort(logits_prob, dim=-1, descending=True)
             # Sum of all probabilities
             cumsum_probs = torch.cumsum(sorted_probs, dim=-1, dtype=sorted_probs.dtype)
             # Truncate all elements which make sum > p
-            mask = (cumsum_probs <= p)
-            # set 1st as True for safety: if prob > p, mask would be all False. 
-            mask[:, 0] = True  
+            mask = cumsum_probs <= p
+            # set 1st as True for safety: if prob > p, mask would be all False.
+            mask[:, 0] = True
+            sorted_probs[~mask] = 0
             filtered_probs = torch.zeros_like(logits_prob)
-            filtered_probs.scatter_(dim=-1, index=sorted_indices[mask], src=sorted_probs[mask])
+            filtered_probs.scatter_(dim=-1, index=sorted_indices, src=sorted_probs)
             # now, normalize filtered probs
             filtered_probs = filtered_probs / filtered_probs.sum(dim=-1, keepdim=True)
-            
+
             # Sample from filtered distribution
-            prediction = torch.multinomial(filtered_probs, num_samples=1) # (batch_size, 1)
+            prediction = torch.multinomial(filtered_probs, num_samples=1)  # (batch_size, 1)
             predicted_token = prediction.item()
-            
+
             # Check if prediction must end
             if predicted_token == eos_token_id:
                 break
-            
+
             # Append next_token to x after sampling
             x = torch.cat([x, prediction], dim=-1)
-            
+
             n_tokens += 1
-            
+
         # Get the ids of the generated tokens only
         new_token_ids = x[:, original_seq_len:]
         return new_token_ids
-        

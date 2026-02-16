@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import math
 import os
 import random
 import time
@@ -17,9 +18,13 @@ from tqdm import tqdm
 
 try:
     import wandb
+
     WANDB_AVAILABLE = True
     import os
-    os.environ['WANDB_API_KEY'] = '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'
+
+    os.environ["WANDB_API_KEY"] = (
+        "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"
+    )
 except ImportError:
     WANDB_AVAILABLE = False
 
@@ -66,6 +71,18 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     return config
 
 
+def calculate_perplexity(loss: float) -> float:
+    """Calculate perplexity from loss.
+
+    Args:
+        loss: Cross-entropy loss value
+
+    Returns:
+        Perplexity (exp(loss))
+    """
+    return math.exp(loss)
+
+
 def create_run_directory(base_dir: str | Path, config: dict[str, Any]) -> Path:
     """Create a unique directory for this training run.
 
@@ -102,7 +119,12 @@ def create_run_directory(base_dir: str | Path, config: dict[str, Any]) -> Path:
 
 def init_model(config: dict[str, Any], device: str) -> nn.Module:
     """Initialize the transformer language model."""
-    rope = RoPE(theta=config["theta"], d_k=config["d_model"] // config["num_heads"], max_seq_len=config["context_length"], device=device)
+    rope = RoPE(
+        theta=config["theta"],
+        d_k=config["d_model"] // config["num_heads"],
+        max_seq_len=config["context_length"],
+        device=device,
+    )
 
     model = TransformerLM(
         vocab_size=config["vocab_size"],
@@ -150,7 +172,7 @@ def load_data(data_path: str | Path, val_data_path: str | Path, vocab_size: int)
     """
     # Load training data with memory mapping
     logger.info(f"Loading training data from {data_path} (memory-mapped)")
-    training_data = np.load(data_path, mmap_mode='r')
+    training_data = np.load(data_path, mmap_mode="r")
     logger.info(f"Training data shape: {training_data.shape}")
 
     # Verify training data integrity
@@ -162,7 +184,7 @@ def load_data(data_path: str | Path, val_data_path: str | Path, vocab_size: int)
 
     # Load validation data with memory mapping
     logger.info(f"Loading validation data from {val_data_path} (memory-mapped)")
-    val_data = np.load(val_data_path, mmap_mode='r')
+    val_data = np.load(val_data_path, mmap_mode="r")
     logger.info(f"Validation data shape: {val_data.shape}")
 
     # Verify validation data integrity
@@ -226,8 +248,8 @@ def validate(
     config: dict[str, Any],
     device: str,
     num_batches: int = 50,
-) -> float:
-    """Run validation and return average loss.
+) -> tuple[float, float]:
+    """Run validation and return average loss and perplexity.
 
     Args:
         model: Model to validate
@@ -237,7 +259,7 @@ def validate(
         num_batches: Number of batches to validate on
 
     Returns:
-        Average validation loss
+        Tuple of (average validation loss, perplexity)
     """
     model.eval()
     total_loss = 0.0
@@ -264,7 +286,9 @@ def validate(
             total_loss += loss.item()
 
     model.train()
-    return total_loss / num_batches
+    avg_loss = total_loss / num_batches
+    perplexity = calculate_perplexity(avg_loss)
+    return avg_loss, perplexity
 
 
 def train(
@@ -321,7 +345,7 @@ def train(
     model.train()
 
     # Track best validation loss
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
 
     # Training loop
     logger.info(f"Starting training for {num_iterations} iterations...")
@@ -377,37 +401,47 @@ def train(
         iter_time = current_time - iteration_start_time
         iteration_start_time = current_time
 
+        # Calculate perplexity
+        train_ppl = calculate_perplexity(loss.item())
+
         # Update progress bar
-        pbar.set_postfix({
-            'loss': f'{loss.item():.4f}',
-            'lr': f'{lr:.6f}',
-            'ms/iter': f'{iter_time*1000:.1f}'
-        })
+        pbar.set_postfix(
+            {
+                "loss": f"{loss.item():.4f}",
+                "ppl": f"{train_ppl:.2f}",
+                "lr": f"{lr:.6f}",
+                "ms/iter": f"{iter_time * 1000:.1f}",
+            }
+        )
 
         # Logging
         if (iteration + 1) % log_interval == 0:
             logger.info(
                 f"Iteration {iteration + 1:>6}/{num_iterations} | "
-                f"Loss: {loss.item():.4f} | LR: {lr:.6f} | "
-                f"Time: {wallclock_time:.2f}s | Iter: {iter_time*1000:.1f}ms"
+                f"Loss: {loss.item():.4f} | Perplexity: {train_ppl:.2f} | LR: {lr:.6f} | "
+                f"Time: {wallclock_time:.2f}s | Iter: {iter_time * 1000:.1f}ms"
             )
 
             # Log to wandb
             if use_wandb and WANDB_AVAILABLE:
-                wandb.log({
-                    "train/loss": loss.item(),
-                    "train/learning_rate": lr,
-                    "train/iteration": iteration + 1,
-                    "train/wallclock_time": wallclock_time,
-                    "train/iter_time_ms": iter_time * 1000,
-                }, step=iteration + 1)
+                wandb.log(
+                    {
+                        "train/loss": loss.item(),
+                        "train/perplexity": train_ppl,
+                        "train/learning_rate": lr,
+                        "train/iteration": iteration + 1,
+                        "train/wallclock_time": wallclock_time,
+                        "train/iter_time_ms": iter_time * 1000,
+                    },
+                    step=iteration + 1,
+                )
 
         # Run validation
         if (iteration + 1) % val_interval == 0:
-            val_loss = validate(model, val_data, config, device)
+            val_loss, val_ppl = validate(model, val_data, config, device)
             logger.info(
                 f"Iteration {iteration + 1:>6}/{num_iterations} | "
-                f"Validation Loss: {val_loss:.4f} | "
+                f"Validation Loss: {val_loss:.4f} | Validation Perplexity: {val_ppl:.2f} | "
                 f"Time: {wallclock_time:.2f}s"
             )
 
@@ -420,11 +454,15 @@ def train(
 
             # Log to wandb
             if use_wandb and WANDB_AVAILABLE:
-                wandb.log({
-                    "val/loss": val_loss,
-                    "val/best_loss": best_val_loss,
-                    "val/wallclock_time": wallclock_time,
-                }, step=iteration + 1)
+                wandb.log(
+                    {
+                        "val/loss": val_loss,
+                        "val/perplexity": val_ppl,
+                        "val/best_loss": best_val_loss,
+                        "val/wallclock_time": wallclock_time,
+                    },
+                    step=iteration + 1,
+                )
 
         # Save checkpoint
         if (iteration + 1) % checkpoint_interval == 0:
@@ -449,20 +487,19 @@ def train(
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Train BPE Transformer language model")
-    parser.add_argument("--config", type=str, default="bpe_transformer/config/TinyStories_17M-2.yaml",
-                        help="Path to YAML config file")
-    parser.add_argument("--data", type=str, default="data/tokenizers/bpe_tinystories/train_tokens.npy",
-                        help="Path to training data")
-    parser.add_argument("--val-data", type=str, default="data/tokenizers/bpe_tinystories/val_tokens.npy",
-                        help="Path to validation data")
-    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints",
-                        help="Directory to save checkpoints")
-    parser.add_argument("--resume-from", type=str, default=None,
-                        help="Path to checkpoint to resume training from")
-    parser.add_argument("--no-wandb", action="store_true",
-                        help="Disable Weights & Biases logging")
-    parser.add_argument("--experiment-name", type=str, default=None,
-                        help="Name for the experiment (for W&B)")
+    parser.add_argument(
+        "--config", type=str, default="bpe_transformer/config/TinyStories_17M-2.yaml", help="Path to YAML config file"
+    )
+    parser.add_argument(
+        "--data", type=str, default="data/tokenizers/bpe_tinystories/train_tokens.npy", help="Path to training data"
+    )
+    parser.add_argument(
+        "--val-data", type=str, default="data/tokenizers/bpe_tinystories/val_tokens.npy", help="Path to validation data"
+    )
+    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints", help="Directory to save checkpoints")
+    parser.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint to resume training from")
+    parser.add_argument("--no-wandb", action="store_true", help="Disable Weights & Biases logging")
+    parser.add_argument("--experiment-name", type=str, default=None, help="Name for the experiment (for W&B)")
     args = parser.parse_args()
 
     # Setup logging
