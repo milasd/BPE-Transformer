@@ -14,9 +14,8 @@ bpe_transformer/
     ├── tokenization/       # BPE tokenizer implementation
     ├── model/              # TransformerLM
     ├── optimizer/          # AdamW optimizer and training utilities
-    └── training/           # Training scripts and utilities
-        ├── utils/          # Training utils (eg. preprocessing dataset)
-        └── train.py        # Main training script
+    ├── training/           # Training scripts and utilities
+    └── inference/          # Text generation and inference
 
 notebooks/             # Jupyter notebooks for demonstrations
 tests/                 # Test suite
@@ -246,6 +245,46 @@ Resume from checkpoint:
 uv run bpe_transformer/training/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
 ```
 
+## Inference
+
+Generate text from a trained model checkpoint:
+
+```sh
+uv run bpe_transformer/inference/generate.py \
+  --checkpoint path/to/checkpoint.pt \
+  --tokenizer-config path/to/tokenizer_config.yaml \
+  --prompt "Once upon a time"
+```
+
+#### Args
+
+- `--checkpoint`: Path to model checkpoint (default: `checkpoints/checkpoint_final.pt`)
+- `--tokenizer-config`: Path to tokenizer config YAML (default: `bpe_transformer/config/yaml/tokenizer/bpe_tinystories.yaml`)
+- `--max-tokens`: Maximum tokens to generate (default: `300`)
+- `--p`: Nucleus sampling threshold (default: `0.9`)
+- `--prompt`: Text prompt (optional, generates from scratch if not provided)
+- `--top-k`: Top-k sampling parameter (optional)
+- `--temperature`: Sampling temperature (default: `0.8`)
+- `--device`: Device to use - cuda/mps/cpu (auto-detected if not specified)
+
+#### Examples
+
+Generate with custom prompt:
+```sh
+uv run bpe_transformer/inference/generate.py \
+  --checkpoint checkpoints/checkpoint_best.pt \
+  --prompt "Once upon a time" \
+  --temperature 0.7 \
+  --max-tokens 200
+```
+
+Generate from scratch (no prompt):
+```sh
+uv run bpe_transformer/inference/generate.py \
+  --checkpoint checkpoints/checkpoint_final.pt \
+  --temperature 1.0 \
+  --max-tokens 500
+```
 
 ## Testing
 
