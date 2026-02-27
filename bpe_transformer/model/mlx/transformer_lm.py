@@ -1,8 +1,15 @@
-from einops import rearrange, repeat
-from torch import nn
-import torch
+"""Transformer language model using MLX."""
 
-from bpe_transformer.model.modules import Embedding, Linear, RMSNorm, RoPE, Transformer, softmax
+from einops import rearrange, repeat
+import mlx.core as mx
+import mlx.nn as nn
+
+from bpe_transformer.model.mlx.embedding import Embedding
+from bpe_transformer.model.mlx.linear import Linear
+from bpe_transformer.model.mlx.rms_norm import RMSNorm
+from bpe_transformer.model.mlx.rope import RoPE
+from bpe_transformer.model.mlx.softmax import softmax
+from bpe_transformer.model.mlx.transformer_block import Transformer
 
 
 class TransformerLM(nn.Module):
@@ -18,8 +25,6 @@ class TransformerLM(nn.Module):
         d_ff: Feedforward hidden dimension.
         num_heads: Number of attention heads.
         rope: Optional RoPE module for positional encoding.
-        device: Device for parameters. Defaults to None.
-        dtype: Data type for parameters. Defaults to None.
 
     Shape:
         - Input: (batch, seq_len) with token IDs
@@ -35,25 +40,19 @@ class TransformerLM(nn.Module):
         d_ff: int,
         num_heads: int,
         rope: RoPE | None = None,
-        device: torch.device | None = None,
-        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.vocab_size = vocab_size
-        self.device = device
         self.context_length = context_length
-        self.token_embedding = Embedding(vocab_size=vocab_size, d_model=d_model, device=device, dtype=dtype)
+        self.token_embedding = Embedding(vocab_size=vocab_size, d_model=d_model)
         self.rope = rope
-        self.transformer_blocks = nn.ModuleList(
-            [
-                Transformer(d_model=d_model, num_heads=num_heads, d_ff=d_ff, device=device, dtype=dtype, rope=rope)
-                for _ in range(num_layers)
-            ]
-        )
-        self.norm = RMSNorm(d_model=d_model, device=device, dtype=dtype)
-        self.linear = Linear(in_features=d_model, out_features=vocab_size, device=device, dtype=dtype)
+        self.transformer_blocks = [
+            Transformer(d_model=d_model, num_heads=num_heads, d_ff=d_ff, rope=rope) for _ in range(num_layers)
+        ]
+        self.norm = RMSNorm(d_model=d_model)
+        self.linear = Linear(in_features=d_model, out_features=vocab_size)
 
-    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
+    def __call__(self, x: mx.array, token_positions: mx.array | None = None) -> mx.array:
         """Forward pass through the language model.
 
         Args:
@@ -68,7 +67,7 @@ class TransformerLM(nn.Module):
             raise ValueError(f"Input sequence length {seq_len} exceeds context_length {self.context_length}")
 
         # 1. Embedding
-        token_embeddings = self.token_embedding(token_ids=x)
+        token_embeddings = self.token_embedding(x)
 
         # 2. Transformer Blocks
         # Create token positions if rope embeddings will be added
@@ -87,16 +86,15 @@ class TransformerLM(nn.Module):
 
         return logits
 
-    @torch.no_grad()
     def generate(
         self,
-        x: torch.Tensor,
+        x: mx.array,
         eos_token_id: int,
         max_tokens: int,
         p: float,
         top_k: int | None = None,
         temperature: int | None = None,
-    ) -> torch.Tensor:
+    ) -> mx.array:
         """Predict next token given a sequence of tokens t until we reach end of token.
         input: sequence of tokens x0,...,xt
         predict xt+1
@@ -105,7 +103,7 @@ class TransformerLM(nn.Module):
         end loop when xt+n == end of sequence token.
         """
         # unsqueeze if tensor is 1 dim only (seq_len,) -> (1, seq_len)
-        if x.dim() == 1:
+        if x.ndim == 1:
             x = rearrange(x, "n_tokens -> 1 n_tokens")
 
         # Keep original seq. len to retrieve generated tokens later
@@ -115,16 +113,14 @@ class TransformerLM(nn.Module):
         predicted_token = -1
         while n_tokens <= max_tokens:
             # If seq_len > context_length, get only past n=context_length tokens.
-            if x.size(1) > self.context_length:
+            if x.shape[1] > self.context_length:
                 x = x[:, -self.context_length :]
 
             # 1. predict next token logits
             batch_size, seq_len = x.shape
-            token_positions = repeat(
-                torch.arange(seq_len, device=x.device), "seq_len -> batch seq_len", batch=batch_size
-            )
+            token_positions = repeat(mx.arange(seq_len), "seq_len -> batch seq_len", batch=batch_size)
 
-            logits = self.forward(x, token_positions=token_positions)[:, -1, :]  # get last logit only for prediciton
+            logits = self(x, token_positions=token_positions)[:, -1, :]  # get last logit only for prediction
 
             # if temperature is provided, scale
             if temperature is not None and temperature > 0:
@@ -133,40 +129,43 @@ class TransformerLM(nn.Module):
             # if top_k is required, apply
             if top_k:
                 # get top k values
-                top_k_values, _ = torch.topk(logits, k=min(top_k, logits.size(-1)))
+                top_k_values = mx.topk(logits, k=min(top_k, logits.shape[-1]))
                 # get smallest value from top k
-                min_k = top_k_values[:, -1].unsqueeze(-1)
+                min_k = top_k_values[:, -1:, None]
                 mask = logits >= min_k
                 # change non-top k values to -inf for softmax.
-                logits[~mask] = float("-inf")
+                logits = mx.where(mask, logits, float("-inf"))
 
             # apply softmax
             logits_prob = softmax(x=logits, i=-1)
 
             # Nucleus/Top-p logits.
-            sorted_probs, sorted_indices = torch.sort(logits_prob, dim=-1, descending=True)
+            sorted_probs = mx.sort(logits_prob, axis=-1)[:, ::-1]  # descending
+            sorted_indices = mx.argsort(logits_prob, axis=-1)[:, ::-1]
             # Sum of all probabilities
-            cumsum_probs = torch.cumsum(sorted_probs, dim=-1, dtype=sorted_probs.dtype)
+            cumsum_probs = mx.cumsum(sorted_probs, axis=-1)
             # Truncate all elements which make sum > p
             mask = cumsum_probs <= p
             # set 1st as True for safety: if prob > p, mask would be all False.
             mask[:, 0] = True
-            sorted_probs[~mask] = 0
-            filtered_probs = torch.zeros_like(logits_prob)
-            filtered_probs.scatter_(dim=-1, index=sorted_indices, src=sorted_probs)
+            sorted_probs = mx.where(mask, sorted_probs, 0)
+            filtered_probs = mx.zeros_like(logits_prob)
+            # scatter-like operation using batch indices
+            batch_indices = mx.arange(filtered_probs.shape[0])[:, None]
+            filtered_probs[batch_indices, sorted_indices] = sorted_probs
             # now, normalize filtered probs
-            filtered_probs = filtered_probs / filtered_probs.sum(dim=-1, keepdim=True)
+            filtered_probs = filtered_probs / mx.sum(filtered_probs, axis=-1, keepdims=True)
 
             # Sample from filtered distribution
-            prediction = torch.multinomial(filtered_probs, num_samples=1)  # (batch_size, 1)
-            predicted_token = prediction.item()
+            prediction = mx.random.categorical(mx.log(filtered_probs + 1e-10))  # (batch_size,)
+            predicted_token = int(prediction[0])
 
             # Check if prediction must end
             if predicted_token == eos_token_id:
                 break
 
             # Append next_token to x after sampling
-            x = torch.cat([x, prediction], dim=-1)
+            x = mx.concatenate([x, prediction[:, None]], axis=-1)
 
             n_tokens += 1
 

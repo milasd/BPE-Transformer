@@ -7,8 +7,8 @@ from pathlib import Path
 import torch
 import yaml
 
-from bpe_transformer.model.modules import RoPE
-from bpe_transformer.model.transformer_lm import TransformerLM
+from bpe_transformer.model.torch.modules import RoPE
+from bpe_transformer.model.torch.transformer_lm import TransformerLM
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 
 logger = logging.getLogger(__name__)

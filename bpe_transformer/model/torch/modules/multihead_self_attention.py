@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from einops import rearrange
 
-from bpe_transformer.model.modules import RoPE, scaled_dot_product_attention, Linear
+from bpe_transformer.model.torch.modules import RoPE, scaled_dot_product_attention, Linear
 
 
 class MultiHeadSelfAttention(nn.Module):

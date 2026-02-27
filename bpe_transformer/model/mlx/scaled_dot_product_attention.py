@@ -1,12 +1,14 @@
-from math import sqrt
-import torch
+"""Scaled dot-product attention using MLX."""
 
-from bpe_transformer.model.modules import softmax
+from math import sqrt
+import mlx.core as mx
+
+from bpe_transformer.model.mlx.softmax import softmax
 
 
 def scaled_dot_product_attention(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None = None
-) -> torch.Tensor:
+    q: mx.array, k: mx.array, v: mx.array, mask: mx.array | None = None
+) -> mx.array:
     """Scaled dot-product attention mechanism.
 
     Computes: softmax(Q·K^T / sqrt(d_k)) · V
@@ -22,12 +24,12 @@ def scaled_dot_product_attention(
         Attention output of shape (..., seq_len_q, d_v).
     """
     d_k = k.shape[-1]  # d_k = d_v
-    score = torch.einsum("...nk, ...mk -> ...nm", q, k) / sqrt(d_k)
+    score = mx.einsum("...nk, ...mk -> ...nm", q, k) / sqrt(d_k)
 
     # Apply '-inf' mask to pre-softmax values
     if mask is not None:
-        score.masked_fill_(~mask, value=float("-inf"))
+        score = mx.where(mask, score, float("-inf"))
     normalized_score = softmax(score, i=-1)
-    attention = torch.einsum("...nm, ...mv -> ...nv", normalized_score, v)
+    attention = mx.einsum("...nm, ...mv -> ...nv", normalized_score, v)
 
     return attention

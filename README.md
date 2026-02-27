@@ -1,6 +1,8 @@
 # BPE Transformer: Byte-Pair Encoding, Transfomer LLM training & inference
 
-Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer from scratch. Train the LLM and generate text with a trained model and tokenizer from the experiment.
+Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer (Muon: in progress) from scratch with PyTorch. Train the LM & generate text with a trained model and tokenizer from the experiment. 
+
+*Recently added: - **MLX** port of LM model/AdamW optimizer/trainer for personal experiments (ported from the main PyTorch implementation).*
 
 
 ## Table of Contents
