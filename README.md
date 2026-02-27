@@ -2,18 +2,21 @@
 
 Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer from scratch.
 
+
 ## Table of Contents
 
 - [Setup](#setup)
-- [Demo Notebooks](#demo-notebooks)
 - [Usage](#usage)
   - [Byte-Pair Encoding Tokenizer](#byte-pair-encoding-tokenizer)
   - [Transformer Model](#transformer-model)
 - [Dataset Preprocessing](#dataset-preprocessing)
 - [Training](#training)
 - [Inference](#inference)
+- [Demo Notebooks](#demo-notebooks)
 - [Testing](#testing)
 
+
+---
 
 ```
 bpe_transformer/
@@ -34,7 +37,7 @@ tests/                 # Test suite
 data/                  # Dataset directory
 checkpoints/           # Model checkpoints from training
 ```
-
+---
 
 ## Setup
 
@@ -62,17 +65,6 @@ curl -L -o TinyStoriesV2-GPT4-train.txt https://huggingface.co/datasets/roneneld
 curl -L -o TinyStoriesV2-GPT4-valid.txt https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
 
 cd ..
-```
-
-## Demo Notebooks
-
-If you don't wish to run the Python scripts, but would like to see demonstrations on some of the implemented concepts, there are some iPython notebooks inside `notebooks`, which you can also try to run in your own personal computer.
-
-```
-notebooks/
-├── 1_pretokenization.ipynb                    # (GPT-2) Regex-based pre-tokenization step
-├── 2_bpe_tokenization_training.ipynb          # Train BPE tokenizer from scratch
-└── 3_bpe_tokenization_encode_decode.ipynb     # Encoding and decoding with BPE
 ```
 
 ## Usage
@@ -296,6 +288,17 @@ uv run bpe_transformer/inference/generate.py \
   --checkpoint checkpoints/checkpoint_final.pt \
   --temperature 1.0 \
   --max-tokens 500
+```
+
+## Demo Notebooks
+
+If you don't wish to run the Python scripts, but would like to see demonstrations on some of the implemented concepts, there are some iPython notebooks inside `notebooks`, which you can also try to run in your own personal computer.
+
+```
+notebooks/
+├── 1_pretokenization.ipynb                    # (GPT-2) Regex-based pre-tokenization step
+├── 2_bpe_tokenization_training.ipynb          # Train BPE tokenizer from scratch
+└── 3_bpe_tokenization_encode_decode.ipynb     # Encoding and decoding with BPE
 ```
 
 ## Testing
