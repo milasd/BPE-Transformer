@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 from pathlib import Path
@@ -31,7 +32,7 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     Returns:
         Configuration dictionary
     """
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     return config
 
@@ -68,7 +69,7 @@ def preprocess_dataset(
     logger.info(f"Estimated tokens: ~{estimated_tokens / 1e6:.1f}M")
 
     # Encode and save using memory-efficient streaming
-    with open(input_file, "r", encoding="utf-8") as f:
+    with open(input_file, encoding="utf-8") as f:
         tokenizer.encode_iterable_to_npy(
             iterable=f,
             output_path=Path(output_file),
@@ -131,9 +132,15 @@ def main(config_path: str | Path) -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Preprocess dataset by tokenizing and saving as numpy arrays")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="bpe_transformer/config/yaml/dataset/preprocessing_tinystories.yaml",
+        help="Path to preprocessing configuration YAML file",
+    )
+    args = parser.parse_args()
+
     setup_logging(log_level="INFO")
 
-    config_path = Path("config/dataset/preprocessing_openwebtext.yaml")
-
-    # Dataset preprocessing for OWT
-    main(config_path=config_path)
+    main(config_path=args.config)

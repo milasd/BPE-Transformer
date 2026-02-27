@@ -1,6 +1,6 @@
 from multiprocessing import Pool
 from bpe_transformer.tokenization.preprocessing.pretokenization import pretokenize_text, split_on_special_tokens
-from bpe_transformer.settings import ENCODING_STD
+from bpe_transformer.tokenization.settings import ENCODING_STD
 from bpe_transformer.tokenization.tokenizer import Tokenizer
 from collections.abc import Iterable
 from pathlib import Path

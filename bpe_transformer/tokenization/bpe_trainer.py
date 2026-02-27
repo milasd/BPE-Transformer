@@ -4,7 +4,7 @@ from collections import Counter
 from pathlib import Path
 from collections.abc import Iterable
 from tqdm import tqdm
-from bpe_transformer.settings import DEFAULT_OUTPUT_DIR
+from bpe_transformer.tokenization.settings import DEFAULT_OUTPUT_DIR
 from bpe_transformer.tokenization.preprocessing import parallel_pretokenization
 
 

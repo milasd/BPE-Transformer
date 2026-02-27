@@ -5,15 +5,23 @@ Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decod
 
 ```
 bpe_transformer/
+    ├── config/             # Default configuration files
+    │   ├── training.py     # TrainingConfig class
+    │   └── yaml/           # YAML files
+    │       ├── training/   # Training hyperparameters
+    │       ├── dataset/    # Dataset preprocessing
+    │       └── tokenizer/  # Tokenization settings
     ├── tokenization/       # BPE tokenizer implementation
-    ├── model/              # Transformer model implementation
-    │   ├── modules/        # Core transformer components
-    │   └── transformer_lm.py
-    └── settings.py         # Configuration settings
+    ├── model/              # TransformerLM
+    ├── optimizer/          # AdamW optimizer and training utilities
+    └── training/           # Training scripts and utilities
+        ├── utils/          # Training utils (eg. preprocessing dataset)
+        └── train.py        # Main training script
 
 notebooks/             # Jupyter notebooks for demonstrations
 tests/                 # Test suite
-data/                  # Dataset directory (suggestion)
+data/                  # Dataset directory
+checkpoints/           # Model checkpoints from training
 ```
 
 
@@ -167,7 +175,7 @@ bpe_transformer/
       │   ├── swiglu.py                 # SwiGLU feedforward
       │   └── transformer_block.py      # Transformer block
       ├── __init__.py
-      └── transformer_lm.py             # Language model
+      └── transformer_lm.py             # TransfomerLM Large Language Model
 ```
 
 #### **Usage**
@@ -196,6 +204,48 @@ token_ids = torch.randint(0, 10000, (2, 128))  # (batch, seq_len)
 token_positions = torch.arange(128)
 logits = model(token_ids, token_positions)  # (batch, seq_len, vocab_size)
 ```
+
+## Dataset Preprocessing
+
+Before training, you need to tokenize your dataset. The training script expects tokenized data as `.npy` files containing token IDs.
+
+Preprocess your dataset using the provided script:
+
+```sh
+uv run python bpe_transformer/training/utils/dataset_preprocessing.py --config path/to/config.yaml
+```
+
+The script defaults `--config` to the TinyStories dataset configuration at `bpe_transformer/config/yaml/dataset/preprocessing_tinystories.yaml`. You can modify this config file according to your data paths, or create new configuration files following the same pattern.
+
+## Training
+
+Train a LLM on the tokenized dataset:
+
+```sh
+uv run bpe_transformer/training/train.py \
+  --config path/to/config.yaml \
+  --data path/to/train_tokens.npy \
+  --val-data path/to/val_tokens.npy
+```
+
+#### Args
+
+- `--config`: Path to model dims and training hyperparameter configuration YAML file
+- `--data`: Path to tokenized training data (`.npy` file)
+- `--val-data`: Path to tokenized validation data  (`.npy` file)
+- `--checkpoint-dir`: Directory to save checkpoints (default: `checkpoints`)
+- `--resume-from`: (Optional) Path to checkpoint to resume training from 
+- `--no-wandb`: Disable Weights & Biases logging
+- `--experiment-name`: Name for the experiment (for W&B tracking)
+
+#### Examples
+
+
+Resume from checkpoint:
+```sh
+uv run bpe_transformer/training/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
+```
+
 
 ## Testing
 

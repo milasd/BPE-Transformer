@@ -4,9 +4,7 @@ import yaml
 from bpe_transformer.model.transformer_lm import TransformerLM
 from bpe_transformer.tokenization.bpe_tokenizer import BPETokenizer
 from bpe_transformer.tokenization.bpe_trainer import BPETrainer
-from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +86,11 @@ def generate_text(
     # Load model config from checkpoint directory
     checkpoint_dir = checkpoint_path.parent
     model_config_path = checkpoint_dir / "config.yaml"
-    with open(model_config_path, "r") as f:
+    with open(model_config_path) as f:
         model_config = yaml.safe_load(f)
 
     # Load tokenizer config
-    with open(tokenizer_config_path, "r") as f:
+    with open(tokenizer_config_path) as f:
         tokenizer_config = yaml.safe_load(f)
 
     # Initialize model
@@ -177,7 +175,7 @@ if __name__ == "__main__":
     # Generate text
     generate_text(
         checkpoint_path=Path(ckp_path),
-        tokenizer_config_path=Path("bpe_transformer/config/tokenizer/bpe_tinystories.yaml"),
+        tokenizer_config_path=Path("bpe_transformer/config/yaml/tokenizer/bpe_tinystories.yaml"),
         max_tokens=300,
         p=0.9,
         # prompt="Once upon a time",
