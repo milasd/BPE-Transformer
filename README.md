@@ -2,7 +2,7 @@
 
 Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer (Muon: in progress) from scratch with PyTorch. Train the LM & generate text with a trained model and tokenizer from the experiment. 
 
-*Recently added: Ported PyTorch model/optimizer/trainer to* **MLX** *for personal experiments.*
+*Recently added: - **MLX** port of LM model/AdamW optimizer/trainer for personal experiments (ported from the main PyTorch implementation).*
 
 
 ## Table of Contents
