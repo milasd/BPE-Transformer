@@ -2,6 +2,18 @@
 
 Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer from scratch.
 
+## Table of Contents
+
+- [Setup](#setup)
+- [Demo Notebooks](#demo-notebooks)
+- [Usage](#usage)
+  - [Byte-Pair Encoding Tokenizer](#byte-pair-encoding-tokenizer)
+  - [Transformer Model](#transformer-model)
+- [Dataset Preprocessing](#dataset-preprocessing)
+- [Training](#training)
+- [Inference](#inference)
+- [Testing](#testing)
+
 
 ```
 bpe_transformer/
