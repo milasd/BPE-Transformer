@@ -1,6 +1,6 @@
-# BPE Transformer: Byte-Pair Encoding for Transformers
+# BPE Transformer: Byte-Pair Encoding, Transfomer LLM training & inference
 
-Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer from scratch.
+Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer from scratch. Train the LLM and generate text with a trained model and tokenizer from the experiment.
 
 
 ## Table of Contents
