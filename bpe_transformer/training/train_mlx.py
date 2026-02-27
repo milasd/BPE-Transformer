@@ -11,7 +11,7 @@ import yaml
 
 from bpe_transformer.config import TrainingConfig
 from bpe_transformer.model.mlx import RoPE, TransformerLM
-from bpe_transformer.optimizer.mlx_adamw import AdamW
+from bpe_transformer.optimizer.mlx import AdamW
 from datetime import datetime
 from einops import rearrange
 from pathlib import Path

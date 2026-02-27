@@ -8,9 +8,9 @@ import torch
 import yaml
 
 from bpe_transformer.config import TrainingConfig
-from bpe_transformer.model.modules import RoPE
-from bpe_transformer.model import TransformerLM
-from bpe_transformer.optimizer import AdamW, cross_entropy_loss, gradient_clipping, lr_cosine_schedule
+from bpe_transformer.model.torch.modules import RoPE
+from bpe_transformer.model.torch import TransformerLM
+from bpe_transformer.optimizer.torch import AdamW, cross_entropy_loss, gradient_clipping, lr_cosine_schedule
 from bpe_transformer.training import data_loader, load_checkpoint, save_checkpoint
 from datetime import datetime
 from pathlib import Path

@@ -2,7 +2,7 @@ from einops import rearrange, repeat
 from torch import nn
 import torch
 
-from bpe_transformer.model.modules import Embedding, Linear, RMSNorm, RoPE, Transformer, softmax
+from bpe_transformer.model.torch.modules import Embedding, Linear, RMSNorm, RoPE, Transformer, softmax
 
 
 class TransformerLM(nn.Module):

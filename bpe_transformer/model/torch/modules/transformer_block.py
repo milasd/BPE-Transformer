@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from bpe_transformer.model.modules import MultiHeadSelfAttention, RMSNorm, RoPE, SwiGLU
+from bpe_transformer.model.torch.modules import MultiHeadSelfAttention, RMSNorm, RoPE, SwiGLU
 
 
 class Transformer(nn.Module):

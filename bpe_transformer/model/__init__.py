@@ -1,7 +1,3 @@
-from bpe_transformer.model.transformer_lm import TransformerLM
-from bpe_transformer.model import modules
+from bpe_transformer.model import torch, mlx
 
-__all__ = [
-    "TransformerLM",
-    "modules",
-]
+__all__ = ["torch", "mlx"]

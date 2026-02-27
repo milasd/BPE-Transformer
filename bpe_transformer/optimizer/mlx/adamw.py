@@ -3,8 +3,6 @@
 import mlx.core as mx
 import mlx.optimizers as optim
 
-optim.AdamW
-
 class AdamW(optim.Optimizer):
     """AdamW optimizer implementation for MLX.
 

@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 
-from bpe_transformer.model.modules import Linear
+from bpe_transformer.model.torch.modules import Linear
 
 
 class SwiGLU(nn.Module):
