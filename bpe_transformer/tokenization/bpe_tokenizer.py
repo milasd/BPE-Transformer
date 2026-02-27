@@ -1,9 +1,10 @@
 from multiprocessing import Pool
 from bpe_transformer.tokenization.preprocessing.pretokenization import pretokenize_text, split_on_special_tokens
-from bpe_transformer.settings import ENCODING_STD
+from bpe_transformer.tokenization.settings import ENCODING_STD
 from bpe_transformer.tokenization.tokenizer import Tokenizer
 from collections.abc import Iterable
 from pathlib import Path
+import numpy as np
 
 
 class BPETokenizer(Tokenizer):
@@ -421,3 +422,61 @@ class BPETokenizer(Tokenizer):
         # Process remaining buffer
         if buffer:
             yield from self.encode(buffer)
+
+    def encode_iterable_to_npy(
+        self, iterable: Iterable[str], output_path: Path, n_workers: int | None = None, dtype: np.dtype = np.int32
+    ) -> None:
+        """
+        Encode an iterable of text and save as a .npy file using memory-efficient streaming.
+
+        Uses a temporary binary file to avoid loading all tokens into RAM, then converts
+        to .npy format. This is the professional approach for large-scale tokenization.
+
+        Args:
+            iterable (Iterable[str]): Iterable of text strings to encode (e.g., file handle)
+            output_path (Path): Path where to save the .npy file
+            n_workers (int | None): Number of parallel workers (None or 1 = sequential)
+            dtype (np.dtype): NumPy dtype for the array (default: np.int32)
+
+        Example:
+            >>> with open("dataset.txt", "r") as f:
+            ...     tokenizer.encode_iterable_to_npy(f, Path("tokens.npy"), n_workers=8)
+        """
+        import tempfile
+        import struct
+
+        # temporary binary file to write tokens incrementally
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".bin")
+        temp_path = Path(temp_file.name)
+
+        try:
+            # Determine format string for struct based on dtype
+            if dtype == np.int32:
+                fmt = "<i"  # little-endian 32-bit signed int
+            elif dtype == np.int64:
+                fmt = "<q"  # little-endian 64-bit signed int
+            elif dtype == np.uint32:
+                fmt = "<I"  # little-endian 32-bit unsigned int
+            else:
+                fmt = "<q"  # default to int64
+
+            total_tokens = 0
+
+            # Write tokens to binary file as we generate them
+            with open(temp_path, "wb") as f:
+                for token_id in self.encode_iterable(iterable, n_workers=n_workers):
+                    f.write(struct.pack(fmt, token_id))
+                    total_tokens += 1
+
+            # Memory-map the binary file and save as .npy
+            token_array = np.memmap(temp_path, dtype=dtype, mode="r", shape=(total_tokens,))
+            np.save(output_path, token_array)
+
+            # Clean up memmap reference!
+            del token_array
+
+            print(f"Saved {total_tokens:,} tokens to {output_path}")
+
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()

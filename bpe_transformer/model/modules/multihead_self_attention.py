@@ -42,7 +42,9 @@ class MultiHeadSelfAttention(nn.Module):
         # Output projection
         self.w_o = Linear(d_model, d_model, device, dtype)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None, token_positions: torch.Tensor | None = None):
+    def forward(
+        self, x: torch.Tensor, mask: torch.Tensor | None = None, token_positions: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """Apply multi-head self-attention.
 
         Args:

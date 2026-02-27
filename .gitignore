@@ -182,3 +182,15 @@ test_bpe.py
 output/
 drafts/
 .DS_Store
+
+wandb
+experiment_tracker.py
+
+*.md
+
+checkpoints
+ckpt
+
+.vscode
+create_trainval_tokenizer.py
+nohup.out
