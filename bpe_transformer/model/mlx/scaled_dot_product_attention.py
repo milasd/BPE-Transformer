@@ -6,9 +6,7 @@ import mlx.core as mx
 from bpe_transformer.model.mlx.softmax import softmax
 
 
-def scaled_dot_product_attention(
-    q: mx.array, k: mx.array, v: mx.array, mask: mx.array | None = None
-) -> mx.array:
+def scaled_dot_product_attention(q: mx.array, k: mx.array, v: mx.array, mask: mx.array | None = None) -> mx.array:
     """Scaled dot-product attention mechanism.
 
     Computes: softmax(Q·K^T / sqrt(d_k)) · V

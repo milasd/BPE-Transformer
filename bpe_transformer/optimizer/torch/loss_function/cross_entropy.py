@@ -20,7 +20,7 @@ def cross_entropy_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tens
     log_probs = stable_logits - log_sum_exp
 
     # 3. Compare to target: get probability
-    log_prob_targets = log_probs[range(logits_flat.shape[0]), target_flat]
+    log_prob_targets = log_probs[torch.arange(logits_flat.shape[0], device=logits_flat.device), target_flat]
 
     loss = -log_prob_targets.mean()
 

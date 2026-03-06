@@ -69,4 +69,4 @@ class RMSNorm(nn.Module):
         Returns:
             RMS tensor with keepdim=True on last dimension.
         """
-        return mx.sqrt(mx.mean(x ** 2, axis=-1, keepdims=True) + self.eps)
+        return mx.sqrt(mx.mean(x**2, axis=-1, keepdims=True) + self.eps)

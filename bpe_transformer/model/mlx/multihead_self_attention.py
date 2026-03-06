@@ -37,9 +37,7 @@ class MultiHeadSelfAttention(nn.Module):
         # Output projection
         self.w_o = Linear(d_model, d_model)
 
-    def __call__(
-        self, x: mx.array, mask: mx.array | None = None, token_positions: mx.array | None = None
-    ) -> mx.array:
+    def __call__(self, x: mx.array, mask: mx.array | None = None, token_positions: mx.array | None = None) -> mx.array:
         """Apply multi-head self-attention.
 
         Args:

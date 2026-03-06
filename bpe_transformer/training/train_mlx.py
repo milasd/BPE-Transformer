@@ -149,9 +149,7 @@ def init_model(config: TrainingConfig) -> nn.Module:
     return model
 
 
-def data_loader(
-    x: np.ndarray, batch_size: int, context_length: int
-) -> tuple[mx.array, mx.array]:
+def data_loader(x: np.ndarray, batch_size: int, context_length: int) -> tuple[mx.array, mx.array]:
     """Load a random batch of data.
 
     Args:
