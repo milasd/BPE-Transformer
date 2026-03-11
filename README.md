@@ -29,23 +29,20 @@ bpe_transformer/
     │       ├── dataset/    # Dataset preprocessing
     │       └── tokenizer/  # Tokenization settings
     ├── tokenization/       # BPE tokenizer implementation
-    ├── model/              # TransformerLM
-    │   ├── torch/          # PyTorch implementation
-    │   └── mlx/            # MLX implementation ("ported" from torch)
+    ├── model/              # TransformerLM model implementation (torch & mlx)
+    │   ├── torch/          
+    │   └── mlx/            
     ├── optimizer/          # Training optimizers (AdamW)
     │   ├── torch/
     │   └── mlx/
-    ├── kernels/            # Custom CUDA/Triton kernels
-    │   └── triton/
-    │       └── flash_attention_2.py  # Flash Attention 2
-    ├── training/           # LM Training scripts for the experiments
+    ├── training/           # LM Training scripts (incl. distributed/single GPU)
     │   ├── torch/
-    │   │   ├── train.py              # Single-GPU training
-    │   │   └── train_ddp.py          # Multi-GPU/Multi-node DDP training
     │   ├── mlx/
-    │   │   └── train_mlx.py          # MLX training (Apple Silicon)
     │   └── utils/
-    └── inference/          # Text generation and inference
+    ├── inference/          # Text generation and inference
+    └── kernels/            # Custom CUDA/Triton kernels
+        └── triton/
+            └── flash_attention_2.py  # Flash Attention 2
 
 notebooks/             # Jupyter notebooks for demonstrations
 tests/                 # Test suite
@@ -241,6 +238,22 @@ The script defaults `--config` to the TinyStories dataset configuration at `bpe_
 
 ## Training
 
+There are scripts to run training experiments on a TransformerLM model in `bpe_transformer/training`. The original `train.py` contains the original code developed to run in a single GPU; for DDP distributed training, `train_ddp.py` was adapted. For MLX single node training, `train_mlx.py`. 
+
+```
+bpe_transformer/
+  └── training/
+      ├── torch/
+      │   ├── train.py              # Single-GPU training
+      │   └── train_ddp.py          # Multi-GPU/Multi-node DDP training
+      ├── mlx/
+      │   └── train_mlx.py          # MLX training (Apple Silicon)
+      └── utils/
+```
+
+Some sample config files (LM n. of layers and other hyperparams) can be found in `config/yaml/training`.
+
+#### Example
 Train a LLM on the tokenized dataset:
 
 ```sh
@@ -248,6 +261,11 @@ uv run bpe_transformer/training/torch/train.py \
   --config path/to/config.yaml \
   --data path/to/train_tokens.npy \
   --val-data path/to/val_tokens.npy
+```
+
+Resume from checkpoint:
+```sh
+uv run bpe_transformer/training/torch/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
 ```
 
 #### Args
@@ -260,13 +278,6 @@ uv run bpe_transformer/training/torch/train.py \
 - `--no-wandb`: Disable Weights & Biases logging
 - `--experiment-name`: Name for the experiment (for W&B tracking)
 
-#### Example
-
-
-Resume from checkpoint:
-```sh
-uv run bpe_transformer/training/torch/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
-```
 
 ### Distributed Training 
 
