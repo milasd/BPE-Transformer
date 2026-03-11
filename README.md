@@ -1,6 +1,6 @@
 # BPE Transformer: Byte-Pair Encoding, Transfomer LLM training & inference
 
-Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer (Muon: in progress) from scratch with PyTorch. Train the LM & generate text with a trained model and tokenizer from the experiment. 
+Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer (Muon: in progress) from scratch with PyTorch; a Triton kernel for Flash Attention (backward pass in progress). Train the LM & generate text with a trained model and tokenizer from the experiment. Supports multi-GPU/multi-node training (currently w/ DDP for PyTorch; will write FSDP as soon as I get access to such infra).
 
 *Recently added: - **MLX** port of LM model/AdamW optimizer/trainer for personal experiments (ported from the main PyTorch implementation).*
 
@@ -24,14 +24,27 @@ Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decod
 bpe_transformer/
     ├── config/             # Default configuration files
     │   ├── training.py     # TrainingConfig class
-    │   └── yaml/           # YAML files
+    │   └── yaml/           
     │       ├── training/   # Training hyperparameters
     │       ├── dataset/    # Dataset preprocessing
     │       └── tokenizer/  # Tokenization settings
     ├── tokenization/       # BPE tokenizer implementation
     ├── model/              # TransformerLM
-    ├── optimizer/          # AdamW optimizer and training utilities
-    ├── training/           # Training scripts and utilities
+    │   ├── torch/          # PyTorch implementation
+    │   └── mlx/            # MLX implementation ("ported" from torch)
+    ├── optimizer/          # Training optimizers (AdamW)
+    │   ├── torch/
+    │   └── mlx/
+    ├── kernels/            # Custom CUDA/Triton kernels
+    │   └── triton/
+    │       └── flash_attention_2.py  # Flash Attention 2
+    ├── training/           # LM Training scripts for the experiments
+    │   ├── torch/
+    │   │   ├── train.py              # Single-GPU training
+    │   │   └── train_ddp.py          # Multi-GPU/Multi-node DDP training
+    │   ├── mlx/
+    │   │   └── train_mlx.py          # MLX training (Apple Silicon)
+    │   └── utils/
     └── inference/          # Text generation and inference
 
 notebooks/             # Jupyter notebooks for demonstrations
@@ -50,6 +63,9 @@ You can try installing the environment:
 ```sh
 uv sync
 ```
+
+(You might need to manually downgrade `torch` if your CUDA version is not up to date.)
+
 
 To run python scripts, use the command below:
 ```sh
@@ -164,23 +180,24 @@ print(len(ids))
 
 ### Transformer Model
 
-The transformer implementation can be found in `bpe_transformer/model`.
+The transformer model implementation can be found in `bpe_transformer/model`. PyTorch version in `torch`, MLX version in `mlx`.
 
 ```
 bpe_transformer/
   └── model/
-      ├── modules/                      # Core building blocks
-      │   ├── __init__.py
-      │   ├── embedding.py              # Token embeddings
-      │   ├── linear.py                 # Bias-free linear layer
-      │   ├── rms_norm.py               # RMSNorm layer
-      │   ├── rope.py                   # Rotary Position Embeddings
-      │   ├── scaled_dot_product_attention.py
-      │   ├── multihead_self_attention.py
-      │   ├── swiglu.py                 # SwiGLU feedforward
-      │   └── transformer_block.py      # Transformer block
-      ├── __init__.py
-      └── transformer_lm.py             # TransfomerLM Large Language Model
+      └── torch/
+          ├── modules/                      # Core building blocks
+          │   ├── __init__.py
+          │   ├── embedding.py              # Token embeddings
+          │   ├── linear.py                 # Bias-free linear layer
+          │   ├── rms_norm.py               # RMSNorm layer
+          │   ├── rope.py                   # Rotary Position Embeddings
+          │   ├── scaled_dot_product_attention.py
+          │   ├── multihead_self_attention.py
+          │   ├── swiglu.py                 # SwiGLU feedforward
+          │   └── transformer_block.py      # Transformer block
+          ├── __init__.py
+          └── transformer_lm.py             # TransfomerLM Large Language Model
 ```
 
 #### **Usage**
@@ -214,7 +231,7 @@ logits = model(token_ids, token_positions)  # (batch, seq_len, vocab_size)
 
 Before training, you need to tokenize your dataset. The training script expects tokenized data as `.npy` files containing token IDs.
 
-Preprocess your dataset using the provided script:
+Preprocess your dataset (eg. TinyStories) using the provided script:
 
 ```sh
 uv run python bpe_transformer/training/utils/dataset_preprocessing.py --config path/to/config.yaml
@@ -227,7 +244,7 @@ The script defaults `--config` to the TinyStories dataset configuration at `bpe_
 Train a LLM on the tokenized dataset:
 
 ```sh
-uv run bpe_transformer/training/train.py \
+uv run bpe_transformer/training/torch/train.py \
   --config path/to/config.yaml \
   --data path/to/train_tokens.npy \
   --val-data path/to/val_tokens.npy
@@ -243,13 +260,31 @@ uv run bpe_transformer/training/train.py \
 - `--no-wandb`: Disable Weights & Biases logging
 - `--experiment-name`: Name for the experiment (for W&B tracking)
 
-#### Examples
+#### Example
 
 
 Resume from checkpoint:
 ```sh
-uv run bpe_transformer/training/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
+uv run bpe_transformer/training/torch/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
 ```
+
+### Distributed Training 
+
+For the multi-GPU, single or multi-node training experiment, DDP is currently supported (todo: FSDP). Run `train_ddp.py` with `torchrun`:
+
+
+#### Example 
+
+Multi-GPUs, single-node:
+```sh
+torchrun --nproc_per_node=NUM_GPUS bpe_transformer/training/torch/train_ddp.py \
+  --config path/to/config.yaml \
+  --data path/to/train_tokens.npy \
+  --val-data path/to/val_tokens.npy
+```
+
+Don't forget to check if batch size is adequate when distributing the training.
+
 
 ## Inference
 
@@ -280,7 +315,7 @@ Generate with custom prompt:
 uv run bpe_transformer/inference/generate.py \
   --checkpoint checkpoints/checkpoint_best.pt \
   --prompt "Once upon a time" \
-  --temperature 0.7 \
+  --temperature 0.9 \
   --max-tokens 200
 ```
 

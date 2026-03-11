@@ -25,6 +25,10 @@ except ImportError:
     WANDB_AVAILABLE = False
 
 
+"""
+Original script to run a training loop with PyTorch in a single GPU (no torch.distributed).
+"""
+
 logger = logging.getLogger(__name__)
 
 
