@@ -30,15 +30,8 @@ bpe_transformer/
     │       └── tokenizer/  # Tokenization settings
     ├── tokenization/       # BPE tokenizer implementation
     ├── model/              # TransformerLM model implementation (torch & mlx)
-    │   ├── torch/          
-    │   └── mlx/            
     ├── optimizer/          # Training optimizers (AdamW)
-    │   ├── torch/
-    │   └── mlx/
     ├── training/           # LM Training scripts (incl. distributed/single GPU)
-    │   ├── torch/
-    │   ├── mlx/
-    │   └── utils/
     ├── inference/          # Text generation and inference
     └── kernels/            # Custom CUDA/Triton kernels
         └── triton/
