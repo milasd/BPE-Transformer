@@ -64,6 +64,9 @@ You can try installing the environment:
 uv sync
 ```
 
+(You might need to manually downgrade `torch` if your CUDA version is not up to date.)
+
+
 To run python scripts, use the command below:
 ```sh
 uv run <python_file_path>
