@@ -1,6 +1,6 @@
 # BPE Transformer: Byte-Pair Encoding, Transfomer LLM training & inference
 
-Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer (Muon: in progress) from scratch with PyTorch. Train the LM & generate text with a trained model and tokenizer from the experiment. 
+Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decoding), a Transformer-based LLM architecture w/ RoPE Embeddings, SwiGLU and AdamW optimizer (Muon: in progress) from scratch with PyTorch; a Triton kernel for Flash Attention (backward pass in progress). Train the LM & generate text with a trained model and tokenizer from the experiment. Supports multi-GPU/multi-node training (currently w/ DDP for PyTorch; will write FSDP as soon as I get access to such infra).
 
 *Recently added: - **MLX** port of LM model/AdamW optimizer/trainer for personal experiments (ported from the main PyTorch implementation).*
 
@@ -24,14 +24,24 @@ Implementation of the Byte-Pair Encoding tokenizer (training, encoding and decod
 bpe_transformer/
     ├── config/             # Default configuration files
     │   ├── training.py     # TrainingConfig class
-    │   └── yaml/           # YAML files
+    │   └── yaml/           
     │       ├── training/   # Training hyperparameters
     │       ├── dataset/    # Dataset preprocessing
     │       └── tokenizer/  # Tokenization settings
     ├── tokenization/       # BPE tokenizer implementation
     ├── model/              # TransformerLM
-    ├── optimizer/          # AdamW optimizer and training utilities
-    ├── training/           # Training scripts and utilities
+    │   ├── torch/          # PyTorch implementation
+    │   └── mlx/            # MLX implementation ("ported" from torch)
+    ├── optimizer/          # Training optimizers (AdamW)
+    │   ├── torch/
+    │   └── mlx/
+    ├── training/           # LM Training scripts for the experiments
+    │   ├── torch/          
+    │   │   ├── train.py        # Single-GPU training
+    │   │   └── train_ddp.py    # Multi-GPU/Multi-node DDP training
+    │   ├── mlx/            
+    │   │   └── train_mlx.py    # MLX training (Apple Silicon)
+    │   └── utils/          
     └── inference/          # Text generation and inference
 
 notebooks/             # Jupyter notebooks for demonstrations
@@ -227,7 +237,7 @@ The script defaults `--config` to the TinyStories dataset configuration at `bpe_
 Train a LLM on the tokenized dataset:
 
 ```sh
-uv run bpe_transformer/training/train.py \
+uv run bpe_transformer/training/torch/train.py \
   --config path/to/config.yaml \
   --data path/to/train_tokens.npy \
   --val-data path/to/val_tokens.npy
@@ -248,8 +258,45 @@ uv run bpe_transformer/training/train.py \
 
 Resume from checkpoint:
 ```sh
-uv run bpe_transformer/training/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
+uv run bpe_transformer/training/torch/train.py --resume-from checkpoints/checkpoint_iter_5000.pt
 ```
+
+### Distributed Training (DDP)
+
+For multi-GPU or multi-node training, use `train_ddp.py` with `torchrun`:
+
+**Single node, multiple GPUs:**
+```sh
+torchrun --nproc_per_node=NUM_GPUS bpe_transformer/training/torch/train_ddp.py \
+  --config path/to/config.yaml \
+  --data path/to/train_tokens.npy \
+  --val-data path/to/val_tokens.npy
+```
+
+**Multi-node training:**
+
+On each node, run:
+```sh
+# Node 0 (master)
+torchrun \
+  --nproc_per_node=8 \
+  --nnodes=NUM_NODES \
+  --node_rank=0 \
+  --master_addr="MASTER_NODE_IP" \
+  --master_port=29500 \
+  bpe_transformer/training/torch/train_ddp.py --config path/to/config.yaml
+
+# Node 1, 2, ... (workers)
+torchrun \
+  --nproc_per_node=8 \
+  --nnodes=NUM_NODES \
+  --node_rank=NODE_RANK \
+  --master_addr="MASTER_NODE_IP" \
+  --master_port=29500 \
+  bpe_transformer/training/torch/train_ddp.py --config path/to/config.yaml
+```
+
+The effective batch size with DDP is: `batch_size × num_gpus × num_nodes`
 
 ## Inference
 
